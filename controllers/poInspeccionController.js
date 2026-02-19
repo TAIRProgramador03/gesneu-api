@@ -34,6 +34,11 @@ const crearInspeccion = async (req, res) => {
     const usuario = (req.session && req.session.user && req.session.user.usuario) ? req.session.user.usuario : (req.body.USUARIO_SUPER || 'SISTEMA');
 
     try {
+
+        let placa = ''
+        let kilometraje = 0
+        let fecha_inspeccion = '2004/05/30'
+
         for (const datos of datosArray) {
             try {
                 // Mapeo de campos del Frontend -> Servicio
@@ -43,8 +48,16 @@ const crearInspeccion = async (req, res) => {
                     PRESION: datos.PRESION_AIRE, // Mapeo PRESION_AIRE -> PRESION
                     KILOMETRO: datos.KILOMETRO,
                     OBSERVACION: datos.OBSERVACION,
-                    PLACA: datos.PLACA
+                    PLACA: datos.PLACA,
+                    TORQUE: datos.TORQUE_APLICADO,
+                    cod_supervisor: datos.COD_SUPERVISOR,
+                    id_operacion: datos.ID_OPERACION,
+                    fecha_inspeccion: datos.FECHA_INSPECCION
                 };
+
+                placa = datos.PLACA
+                kilometraje = datos.KILOMETRO
+                fecha_inspeccion = datos.FECHA_INSPECCION
 
                 await neumaticoService.registrarInspeccion(dataServicio, usuario);
                 resultados.push({ codigo: datos.CODIGO, status: 'OK' });
@@ -60,6 +73,14 @@ const crearInspeccion = async (req, res) => {
             return res.status(207).json({ mensaje: "Algunas inspecciones fallaron", resultados, errores });
         }
 
+        // falta la fecha se asignación
+
+        sqlInsertVehi = `
+            INSERT INTO SPEED400PI.NEU_VKILOMETRAJE
+                (PLACA, KILOMETRAJE, FECHA_ASIGNACION, FECHA_INSPECCION)
+            VALUES (?, ?, ?, ?)`;
+        await db.query(sqlInsertVehi, [placa, kilometraje, '2026-02-15', fecha_inspeccion]);
+
         res.status(201).json({ mensaje: "Inspecciones registradas correctamente (Normalizado)", resultados });
 
     } catch (error) {
@@ -72,38 +93,37 @@ const crearInspeccion = async (req, res) => {
 // REFACTORIZADO: Ahora busca en NEU_DETALLE en lugar de NEU_INSPECCION
 const existeInspeccionHoy = async (req, res) => {
     try {
-        const { codigo, placa, fecha } = req.query;
-        if (!codigo || !placa || !fecha) {
-            return res.status(400).json({ error: "Faltan parámetros: codigo, placa y fecha son requeridos" });
+        const { placa, fecha } = req.query;
+        if (!placa || !fecha) {
+            return res.status(400).json({ error: "Faltan parámetros: placa y fecha son requeridos" });
         }
 
-        // Buscar inspección en NEU_DETALLE
         const query = `
-            SELECT FECHA_SUCESO AS FECHA_REGISTRO
-            FROM SPEED400AT.NEU_DETALLE
-            WHERE CODIGO_CASCO = ? 
-              AND PLACA = ? 
-              AND DATE(FECHA_SUCESO) = ?
-              AND UPPER(TIPO_ACCION) = 'INSPECCION'
-            ORDER BY FECHA_SUCESO DESC
-            FETCH FIRST 1 ROWS ONLY
-        `;
-        const result = await db.query(query, [codigo, placa, fecha]);
+            SELECT
+                FECHA_INSPECCION AS FECHA_REGISTRO,
+                FECHA_ASIGNACION
+            FROM SPEED400PI.NEU_VKILOMETRAJE
+            WHERE PLACA = ?
+            AND DATE(FECHA_INSPECCION) = ?
+            ORDER BY ID DESC
+            FETCH FIRST 1 ROW ONLY`;
+
+        const result = await db.query(query, [placa, fecha]);
 
         if (result.length > 0) {
-            return res.json({ existe: true, fecha: result[0].FECHA_REGISTRO });
-        } else {
-            // Buscar la última inspección global para este neumático/placa
+            return res.json({ existe: true, fechas: result[0] });
+        }
+        else {
             const lastQuery = `
-                SELECT FECHA_SUCESO AS FECHA_REGISTRO
-                FROM SPEED400AT.NEU_DETALLE
-                WHERE CODIGO_CASCO = ? 
-                  AND PLACA = ?
-                  AND UPPER(TIPO_ACCION) = 'INSPECCION'
-                ORDER BY FECHA_SUCESO DESC
-                FETCH FIRST 1 ROW ONLY
-            `;
-            const lastResult = await db.query(lastQuery, [codigo, placa]);
+                SELECT
+                    FECHA_INSPECCION AS FECHA_REGISTRO,
+                    FECHA_ASIGNACION
+                FROM SPEED400PI.NEU_VKILOMETRAJE
+                WHERE PLACA = ?
+                ORDER BY ID DESC
+                FETCH FIRST 1 ROW ONLY`;
+
+            const lastResult = await db.query(lastQuery, [placa]);
             return res.json({ existe: false, ultima: lastResult[0]?.FECHA_REGISTRO || null });
         }
     } catch (error) {

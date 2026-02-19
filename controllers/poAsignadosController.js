@@ -10,34 +10,113 @@ const listarNeumaticosAsignados = async (req, res) => {
 
         const placaTrim = placa.trim();
 
-        // CONSULTA NORMALIZADA A NEU_CABECERA
-        // Filtramos por PLACA y por estado (usando el catálogo)
-        const query = `
-            SELECT 
-                C.ID_NEUMATICO AS ID,
-                TRIM(C.PLACA_ACTUAL) AS PLACA,
-                TRIM(C.POSICION_ACTUAL) AS POSICION,
-                TRIM(C.POSICION_ACTUAL) AS POSICION_NEU, -- Alias para compatibilidad frontend
-                TRIM(C.CODIGO_CASCO) AS CODIGO,
-                TRIM(C.CODIGO_CASCO) AS CODIGO_NEU,      -- Alias para compatibilidad frontend
-                M.DESCRIPCION AS MARCA,
-                C.MEDIDA,
-                C.REMANENTE_ACTUAL AS REMANENTE,
-                C.REMANENTE_INICIAL AS REMANENTE_ORIGINAL,
-                C.PORCENTAJE_VIDA AS ESTADO,       -- Frontend espera numérico para barra de progreso
-                E.DESCRIPCION AS TIPO_MOVIMIENTO,  -- Frontend espera texto para etiquetas
-                C.FECHA_ULTIMO_SUCESO AS FECHA_ASIGNADO,
-                C.FECHA_ULTIMO_SUCESO, -- Agregado para frontend
-                C.KM_TOTAL_VIDA,       -- Agregado para frontend
-                C.SUPERVISOR_ACTUAL AS USUARIO_ASIGNA,
-                C.SUPERVISOR_ACTUAL AS USUARIO_SUPER
-            FROM SPEED400AT.NEU_CABECERA C
-            LEFT JOIN SPEED400AT.NEU_ESTADO E ON C.ID_ESTADO = E.ID_ESTADO
-            LEFT JOIN SPEED400AT.PO_MARCA M ON C.ID_MARCA = M.ID
-            WHERE C.PLACA_ACTUAL = ? 
-              AND (E.CODIGO_INTERNO = 'ASIGNADO' OR (C.POSICION_ACTUAL IS NOT NULL AND C.POSICION_ACTUAL <> ''))
-              AND E.CODIGO_INTERNO NOT IN ('BAJA', 'RECUPERADO') -- Doble seguridad
-        `;
+        // let query = `
+        //         SELECT
+        //             np."ID" AS ID,
+        //             np.FECHA_REGISTRO AS FECHA_REGISTRO,
+        //             ni.PLACA_ACTUAL AS PLACA,
+        //             ni.POSICION_ACTUAL AS POSICION_NEU,
+        //             np.CODIGO AS CODIGO_NEU,
+        //             nm.MARCA AS MARCA,
+        //             np.MEDIDA,
+        //             ni.REMANENTE_ACTUAL AS REMANENTE,
+        //             np.REMANENTE_INICIAL AS REMANENTE_ORIGINAL,
+        //             ni.PORCENTAJE_VIDA AS ESTADO,
+        //             ne.DESCRIPCION AS TIPO_MOVIMIENTO,
+        //             ni.FECHA_ULTIMA_ASIGNACION AS FECHA_ASIGNADO,
+        //             ni.FECHA_ULTIMA_ACTUALIZACION AS FECHA_ULTIMO_SUCESO,
+        //             ni.KM_TOTAL_VIDA,   
+        //             ni.ODOMETRO_AL_MONTAR AS ODOMETRO,
+        //             ni.PRESION_ACTUAL AS PRESION_AIRE,
+        //             ni.TORQUE_ACTUAL  AS TORQUE_APLICADO
+        //         FROM SPEED400PI.NEU_PADRON np
+        //         LEFT JOIN SPEED400AT.NEU_MARCA nm
+        //             ON nm.ID_MARCA = np.ID_MARCA
+        //         INNER JOIN SPEED400PI.NEU_INFORMACION ni
+        //             ON ni.ID_NEUMATICO = np."ID"
+        //         INNER JOIN SPEED400AT.NEU_ESTADO ne
+        //             ON ne.ID_ESTADO = ni.ID_ESTADO
+        //         WHERE ni.PLACA_ACTUAL = ? AND ni.ID_ESTADO = 2`
+
+        // let query = `
+        //     SELECT
+        //         np."ID" AS ID,
+        //         np.FECHA_REGISTRO AS FECHA_REGISTRO,
+        //         ni.PLACA_ACTUAL AS PLACA,
+        //         ni.POSICION_ACTUAL AS POSICION_NEU,
+        //         np.CODIGO AS CODIGO_NEU,
+        //         nm.MARCA AS MARCA,
+        //         np.MEDIDA,
+        //         ni.REMANENTE_ACTUAL AS REMANENTE,
+        //         np.REMANENTE_INICIAL AS REMANENTE_ORIGINAL,
+        //         ni.PORCENTAJE_VIDA AS ESTADO,
+        //         ne.DESCRIPCION AS TIPO_MOVIMIENTO,
+        //         ni.FECHA_ULTIMA_ASIGNACION AS FECHA_ASIGNADO,
+        //         ni.FECHA_ULTIMA_ACTUALIZACION AS FECHA_ULTIMO_SUCESO,
+        //         (SELECT COALESCE(SUM(nmo.KM_RECORRIDOS_ETAPA), 0)
+        //             FROM SPEED400PI.NEU_MOVIMIENTOS nmo
+        //             WHERE nmo.ID_NEUMATICO = np."ID"
+        //             AND nmo.PLACA = ni.PLACA_ACTUAL
+        //         ) AS KM_TOTAL_VIDA,
+        //         (SELECT nmo.ODOMETRO_VEHICULO
+        //             FROM SPEED400PI.NEU_MOVIMIENTOS nmo
+        //             WHERE nmo.ID_NEUMATICO = np."ID"
+        //             AND nmo.PLACA = ni.PLACA_ACTUAL
+        //             ORDER BY nmo.ID DESC
+        //             FETCH FIRST 1 ROW ONLY
+        //         ) AS ODOMETRO,
+        //         ni.PRESION_ACTUAL AS PRESION_AIRE,
+        //         ni.TORQUE_ACTUAL AS TORQUE_APLICADO
+        //     FROM SPEED400PI.NEU_PADRON np
+        //     LEFT JOIN SPEED400AT.NEU_MARCA nm
+        //         ON nm.ID_MARCA = np.ID_MARCA
+        //     INNER JOIN SPEED400PI.NEU_INFORMACION ni
+        //         ON ni.ID_NEUMATICO = np."ID"
+        //     INNER JOIN SPEED400AT.NEU_ESTADO ne
+        //         ON ne.ID_ESTADO = ni.ID_ESTADO
+        //     WHERE ni.PLACA_ACTUAL = ? AND ni.ID_ESTADO = 2`;
+
+        let query = `
+            SELECT
+                np."ID" AS ID,
+                np.FECHA_REGISTRO AS FECHA_REGISTRO,
+                ni.PLACA_ACTUAL AS PLACA,
+                ni.POSICION_ACTUAL AS POSICION_NEU,
+                np.CODIGO AS CODIGO_NEU,
+                nm.MARCA AS MARCA,
+                np.MEDIDA,
+                ni.REMANENTE_ACTUAL AS REMANENTE,
+                np.REMANENTE_INICIAL AS REMANENTE_ORIGINAL,
+                ni.PORCENTAJE_VIDA AS ESTADO,
+                ne.DESCRIPCION AS TIPO_MOVIMIENTO,
+                (SELECT NM.FECHA_ASIGNACION
+                    FROM SPEED400PI.NEU_MOVIMIENTOS NM
+                    WHERE NI.PLACA_ACTUAL = NM.PLACA AND NM.ID_ACCION = 2 AND np.ID = NM.ID_NEUMATICO
+                    ORDER BY NM.ID DESC
+                    FETCH FIRST 1 ROW ONLY
+                ) AS FECHA_ASIGNADO,
+                ni.FECHA_ULTIMA_ACTUALIZACION AS FECHA_ULTIMO_SUCESO,
+                (SELECT COALESCE(SUM(nmo.KM_RECORRIDOS_ETAPA), 0)
+                    FROM SPEED400PI.NEU_MOVIMIENTOS nmo
+                    WHERE nmo.ID_NEUMATICO = np."ID"
+                    AND nmo.PLACA = ni.PLACA_ACTUAL
+                ) AS KM_TOTAL_VIDA,
+                (SELECT VK.KILOMETRAJE
+                    FROM SPEED400PI.NEU_VKILOMETRAJE VK
+                    WHERE VK.PLACA = ni.PLACA_ACTUAL
+                    ORDER BY VK.ID DESC
+                    FETCH FIRST 1 ROW ONLY
+                ) AS ODOMETRO,
+                ni.PRESION_ACTUAL AS PRESION_AIRE,
+                ni.TORQUE_ACTUAL AS TORQUE_APLICADO
+            FROM SPEED400PI.NEU_PADRON np
+            LEFT JOIN SPEED400AT.NEU_MARCA nm
+                ON nm.ID_MARCA = np.ID_MARCA
+            INNER JOIN SPEED400PI.NEU_INFORMACION ni
+                ON ni.ID_NEUMATICO = np."ID"
+            INNER JOIN SPEED400AT.NEU_ESTADO ne
+                ON ne.ID_ESTADO = ni.ID_ESTADO
+            WHERE ni.PLACA_ACTUAL = ? AND ni.ID_ESTADO = 2 ORDER BY ni.POSICION_ACTUAL`;
 
         const result = await db.query(query, [placaTrim]);
 
@@ -171,31 +250,66 @@ const listaUltimoMovPlaca = async (req, res) => {
         // REFACTORIZADO A NEU_DETALLE
         // Buscamos el último movimiento por posición para esta placa
         // Excluyendo Acciones de BAJA (ID diferente según catálogo, pero usaremos CODIGO_INTERNO)
-        const query = `
-            SELECT 
-                D.ID_MOVIMIENTO,
-                D.POSICION_NUEVA AS POSICION_NEU, -- Alias frontend
-                D.FECHA_SUCESO AS FECHA_MOVIMIENTO,
-                A.DESCRIPCION AS TIPO_MOVIMIENTO,  -- "MONTAJE", "ROTACION", etc.
-                D.ODOMETRO_VEHICULO AS ODOMETRO,
-                D.REMANENTE_MEDIDO AS REMANENTE,
-                D.PRESION_MEDIDA AS PRESION,
-                D.PLACA,
-                D.OBSERVACION
-            FROM SPEED400AT.NEU_DETALLE D
-            INNER JOIN (
-                SELECT POSICION_NUEVA, MAX(FECHA_SUCESO) AS FECHA_MAX
-                FROM SPEED400AT.NEU_DETALLE
-                WHERE TRIM(PLACA) = ? AND POSICION_NUEVA IS NOT NULL AND POSICION_NUEVA <> ''
-                GROUP BY POSICION_NUEVA
-            ) ULT ON D.POSICION_NUEVA = ULT.POSICION_NUEVA AND D.FECHA_SUCESO = ULT.FECHA_MAX
-            LEFT JOIN SPEED400AT.NEU_ACCION A ON D.ID_ACCION = A.ID_ACCION
-            WHERE TRIM(D.PLACA) = ?
-              AND (A.CODIGO_INTERNO <> 'BAJA' AND A.CODIGO_INTERNO <> 'RECUPERO')
-            ORDER BY D.POSICION_NUEVA
-        `;
 
-        const params = [placaTrim, placaTrim];
+        // const query = `
+        //     SELECT 
+        //         D.ID_MOVIMIENTO,
+        //         D.POSICION_NUEVA AS POSICION_NEU, -- Alias frontend
+        //         D.FECHA_SUCESO AS FECHA_MOVIMIENTO,
+        //         A.DESCRIPCION AS TIPO_MOVIMIENTO,  -- "MONTAJE", "ROTACION", etc.
+        //         D.ODOMETRO_VEHICULO AS ODOMETRO, 
+        //         D.REMANENTE_MEDIDO AS REMANENTE,
+        //         D.PRESION_MEDIDA AS PRESION,
+        //         D.PLACA,
+        //         D.OBSERVACION 
+        //     FROM SPEED400AT.NEU_DETALLE D
+        //     INNER JOIN (
+        //         SELECT POSICION_NUEVA, MAX(FECHA_SUCESO) AS FECHA_MAX
+        //         FROM SPEED400AT.NEU_DETALLE
+        //         WHERE TRIM(PLACA) = ? AND POSICION_NUEVA IS NOT NULL AND POSICION_NUEVA <> ''
+        //         GROUP BY POSICION_NUEVA
+        //     ) ULT ON D.POSICION_NUEVA = ULT.POSICION_NUEVA AND D.FECHA_SUCESO = ULT.FECHA_MAX
+        //     LEFT JOIN SPEED400AT.NEU_ACCION A ON D.ID_ACCION = A.ID_ACCION
+        //     WHERE TRIM(D.PLACA) = ?
+        //       AND (A.CODIGO_INTERNO <> 'BAJA' AND A.CODIGO_INTERNO <> 'RECUPERO')
+        //     ORDER BY D.POSICION_NUEVA`;
+
+        const query = `
+            WITH ULTIMO_MOV AS (
+            SELECT
+                NM.ID_NEUMATICO,
+                NM.PLACA,
+                NM.ODOMETRO_VEHICULO,
+                NA.DESCRIPCION,
+                ROW_NUMBER() OVER (
+                    PARTITION BY NM.ID_NEUMATICO, NM.PLACA
+                    ORDER BY NM."ID"  DESC
+                ) AS RN
+            FROM SPEED400PI.NEU_MOVIMIENTOS NM
+            LEFT JOIN SPEED400AT.NEU_ACCION NA
+                ON NA.ID_ACCION = NM.ID_ACCION
+            )
+            SELECT
+                NI.ID_NEUMATICO,
+                NI.POSICION_ACTUAL AS POSICION_NEU,
+                NI.FECHA_ULTIMA_ACTUALIZACION AS FECHA_MOVIMIENTO,
+                NI.REMANENTE_ACTUAL AS REMANENTE,
+                NI.PRESION_ACTUAL AS PRESION,
+                NI.PLACA_ACTUAL,
+                UM.ODOMETRO_VEHICULO,
+                UM.DESCRIPCION
+            FROM SPEED400PI.NEU_INFORMACION NI
+            INNER JOIN SPEED400PI.NEU_PADRON NP
+                ON NI.ID_NEUMATICO = NP."ID"
+            INNER JOIN ULTIMO_MOV UM
+                ON UM.ID_NEUMATICO = NI.ID_NEUMATICO
+                AND UM.PLACA = NI.PLACA_ACTUAL
+                AND UM.RN = 1
+            WHERE NI.PLACA_ACTUAL = ?
+            AND NI.ID_ESTADO = 2
+            ORDER BY NI.POSICION_ACTUAL`
+
+        const params = [placaTrim];
         const result = await db.query(query, params);
 
         // Normalización respuesta

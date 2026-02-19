@@ -5,36 +5,19 @@ const neumaticoService = require('../services/neumaticoService');
 // LECTURA PRINCIPAL DEL PADRÓN (Usando Nuevo Servicio Normalizado)
 // ============================================================================
 const getTodosNeumaticos = async (req, res) => {
-    // Validar sesión y usuario
     if (!req.session.user || !req.session.user.usuario) {
         return res.status(401).json({ mensaje: 'No autenticado' });
     }
     try {
-        // Obtener usuario y perfiles desde la sesión
         const usuario = req.session.user?.usuario;
-        const perfiles = req.session.user?.perfiles?.map(p => p.codigo) || [];
-
-        // Si NO es OPERACIONES (005), filtra por USUARIO_SUPER
-        const filtroSupervisor = !perfiles.includes('005') ? usuario : null;
-
-        // 1. Obtener datos normalizados desde el servicio (NEU_CABECERA + NEU_MARCA)
-        // El servicio ya se encarga de formatear los campos como 'PR', 'CARGA', 'ESTADO_NEUMATICO', etc.
-        const datosNormalizados = await neumaticoService.obtenerTodos(filtroSupervisor);
-
-        // Validar que el resultado sea un array
+        const datosNormalizados = await neumaticoService.obtenerTodos(usuario);
         if (!Array.isArray(datosNormalizados)) {
             console.error('❌ Error Crítico: El servicio не devolvió un array.', typeof datosNormalizados, datosNormalizados);
-            // Fallback seguro para evitar rotura de frontend
             return res.json([]);
         }
-
-        // 3. Responder con la estructura exacta que espera el frontend (Array directo)
-        // console.log(`✅ Enviando ${datosNormalizados.length} registros al frontend.`);
         res.json(datosNormalizados);
-
     } catch (error) {
         console.error('❌ Error al obtener todos los neumáticos (Service):', error);
-        // Responder con array vacío en lugar de error 500 para evitar que el frontend explote con .filter()
         res.status(200).json([]);
     }
 };
@@ -46,26 +29,54 @@ const getPoNeumaticos = getTodosNeumaticos;
 // FUNCIONES DE CONTEO (Refactorizadas a NEU_CABECERA)
 // ============================================================================
 const contarNeumaticos = async (req, res) => {
+    // if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    // try {
+    //     const usuario = req.session.user.usuario;
+    //     const perfiles = req.session.user.perfiles?.map(p => p.codigo) || [];
+
+    //     let query = 'SELECT COUNT(*) AS cantidad FROM SPEED400AT.NEU_CABECERA';
+    //     let params = [];
+    //     if (!perfiles.includes('005')) {
+    //         query += ' WHERE SUPERVISOR_ACTUAL = ?';
+    //         params.push(usuario);
+    //     }
+
+    //     const result = await db.query(query, params);
+    //     // DB2 fix: Check lowercase or uppercase column name
+    //     const valor = result && result[0] ? (result[0].cantidad || result[0].CANTIDAD || 0) : 0;
+    //     res.json({ cantidad: valor });
+    // } catch (error) {
+    //     console.error('Error al contar neumáticos:', error);
+    //     res.status(500).json({ error: 'Error al contar neumáticos' });
+    // }
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
     try {
         const usuario = req.session.user.usuario;
         const perfiles = req.session.user.perfiles?.map(p => p.codigo) || [];
 
-        let query = 'SELECT COUNT(*) AS cantidad FROM SPEED400AT.NEU_CABECERA';
+        let query = `
+                SELECT
+                    COUNT(*) cantidad
+                FROM SPEED400AT.MAE_TALLER_X_USUARIO u
+                    INNER JOIN SPEED400AT.PO_TALLER t
+                        ON u.ID_TALLER = t.ID
+                    INNER JOIN SPEED400PI.NEU_INFORMACION i
+                        ON t.DESCRIPCION = i.PROYECTO_ACTUAL
+                    INNER JOIN SPEED400PI.NEU_PADRON p
+                        ON  i.ID_NEUMATICO = p.ID`
         let params = [];
-        if (!perfiles.includes('005')) {
-            query += ' WHERE SUPERVISOR_ACTUAL = ?';
-            params.push(usuario);
-        }
-
+        // if (!perfiles.includes('005')) {
+        query += ' WHERE TRIM(u.CH_CODI_USUARIO) = ?';
+        params.push(usuario);
+        // }
         const result = await db.query(query, params);
-        // DB2 fix: Check lowercase or uppercase column name
         const valor = result && result[0] ? (result[0].cantidad || result[0].CANTIDAD || 0) : 0;
         res.json({ cantidad: valor });
     } catch (error) {
         console.error('Error al contar neumáticos:', error);
         res.status(500).json({ error: 'Error al contar neumáticos' });
     }
+
 };
 
 const contarNeumaticosBajaDefinitiva = async (req, res) => {
@@ -74,12 +85,26 @@ const contarNeumaticosBajaDefinitiva = async (req, res) => {
         const usuario = req.session.user.usuario;
         const perfiles = req.session.user.perfiles?.map(p => p.codigo) || [];
 
-        let query = "SELECT COUNT(*) AS cantidad FROM SPEED400AT.NEU_CABECERA C LEFT JOIN SPEED400AT.NEU_ESTADO E ON C.ID_ESTADO = E.ID_ESTADO WHERE E.CODIGO_INTERNO = 'BAJA'";
+        // ID_ESTADO:
+        // 3 -> BAJA DEFINITIVA
+
+        let query = `
+                    SELECT
+                        COUNT(*) AS cantidad
+                    FROM SPEED400AT.MAE_TALLER_X_USUARIO u
+                        INNER JOIN SPEED400AT.PO_TALLER t
+                            ON u.ID_TALLER = t.ID
+                        INNER JOIN SPEED400PI.NEU_INFORMACION i
+                            ON t.DESCRIPCION = i.PROYECTO_ACTUAL
+                        INNER JOIN SPEED400PI.NEU_PADRON p
+                            ON i.ID_NEUMATICO = p.ID
+                    WHERE i.ID_ESTADO = 3`
+
         let params = [];
-        if (!perfiles.includes('005')) {
-            query += ' AND C.SUPERVISOR_ACTUAL = ?';
-            params.push(usuario);
-        }
+        // if (!perfiles.includes('005')) {
+        query += ' AND TRIM(u.CH_CODI_USUARIO) = ?';
+        params.push(usuario);
+        // }
 
         const result = await db.query(query, params);
         const valor = result && result[0] ? (result[0].cantidad || result[0].CANTIDAD || 0) : 0;
@@ -96,12 +121,26 @@ const contarNeumaticoRecuperados = async (req, res) => {
         const usuario = req.session.user.usuario;
         const perfiles = req.session.user.perfiles?.map(p => p.codigo) || [];
 
-        let query = "SELECT COUNT(*) AS cantidad FROM SPEED400AT.NEU_CABECERA C LEFT JOIN SPEED400AT.NEU_ESTADO E ON C.ID_ESTADO = E.ID_ESTADO WHERE E.CODIGO_INTERNO = 'RECUPERADO'";
+        // ID_ESTADO:
+        // 4 -> RECUPERADO
+
+        let query = `
+                    SELECT
+                        COUNT(*) AS cantidad
+                    FROM SPEED400AT.MAE_TALLER_X_USUARIO u
+                        INNER JOIN SPEED400AT.PO_TALLER t
+                            ON u.ID_TALLER = t.ID
+                        INNER JOIN SPEED400PI.NEU_INFORMACION i
+                            ON t.DESCRIPCION = i.PROYECTO_ACTUAL
+                        INNER JOIN SPEED400PI.NEU_PADRON p
+                            ON i.ID_NEUMATICO = p.ID
+                    WHERE i.ID_ESTADO = 4`
+
         let params = [];
-        if (!perfiles.includes('005')) {
-            query += ' AND C.SUPERVISOR_ACTUAL = ?';
-            params.push(usuario);
-        }
+        // if (!perfiles.includes('005')) {
+        query += ' AND TRIM(u.CH_CODI_USUARIO) = ?';
+        params.push(usuario);
+        // }
 
         const result = await db.query(query, params);
         const valor = result && result[0] ? (result[0].cantidad || result[0].CANTIDAD || 0) : 0;
@@ -145,12 +184,26 @@ const contarNeumaticosAsignados = async (req, res) => {
         const usuario = req.session.user.usuario;
         const perfiles = req.session.user.perfiles?.map(p => p.codigo) || [];
 
-        let query = "SELECT COUNT(*) AS cantidad FROM SPEED400AT.NEU_CABECERA C LEFT JOIN SPEED400AT.NEU_ESTADO E ON C.ID_ESTADO = E.ID_ESTADO WHERE E.CODIGO_INTERNO = 'ASIGNADO'";
+        // ID_ESTADO:
+        // 2 -> ASIGNADO
+
+        let query = `
+                    SELECT
+                        COUNT(*) AS cantidad
+                    FROM SPEED400AT.MAE_TALLER_X_USUARIO u
+                        INNER JOIN SPEED400AT.PO_TALLER t
+                            ON u.ID_TALLER = t.ID
+                        INNER JOIN SPEED400PI.NEU_INFORMACION i
+                            ON t.DESCRIPCION = i.PROYECTO_ACTUAL
+                        INNER JOIN SPEED400PI.NEU_PADRON p
+                            ON i.ID_NEUMATICO = p.ID
+                    WHERE i.ID_ESTADO = 2`
+
         let params = [];
-        if (!perfiles.includes('005')) {
-            query += ' AND C.SUPERVISOR_ACTUAL = ?';
-            params.push(usuario);
-        }
+        // if (!perfiles.includes('005')) {
+        query += ' AND TRIM(u.CH_CODI_USUARIO) = ?';
+        params.push(usuario);
+        // }
 
         const result = await db.query(query, params);
         const valor = result && result[0] ? (result[0].cantidad || result[0].CANTIDAD || 0) : 0;
@@ -164,20 +217,35 @@ const contarNeumaticosDisponibles = async (req, res) => {
         const usuario = req.session.user.usuario;
         const perfiles = req.session.user.perfiles?.map(p => p.codigo) || [];
 
-        let query = "SELECT COUNT(*) AS cantidad FROM SPEED400AT.NEU_CABECERA C LEFT JOIN SPEED400AT.NEU_ESTADO E ON C.ID_ESTADO = E.ID_ESTADO WHERE E.CODIGO_INTERNO = 'DISPONIBLE'";
+        // ID_ESTADO:
+        // 1 -> DISPONIBLE
+
+        let query = `
+                    SELECT
+                        COUNT(*) AS cantidad
+                    FROM SPEED400AT.MAE_TALLER_X_USUARIO u
+                        INNER JOIN SPEED400AT.PO_TALLER t
+                            ON u.ID_TALLER = t.ID
+                        INNER JOIN SPEED400PI.NEU_INFORMACION i
+                            ON t.DESCRIPCION = i.PROYECTO_ACTUAL
+                        INNER JOIN SPEED400PI.NEU_PADRON p
+                            ON i.ID_NEUMATICO = p.ID
+                    WHERE i.ID_ESTADO = 1`
+
         let params = [];
-        if (!perfiles.includes('005')) {
-            // STOCK/DISPONIBLE visible para supervisor: ¿Solo lo suyo o todo lo huerfano?
-            // Mismo criterio que lista: Lo suyo + lo huerfano
-            query += " AND (C.SUPERVISOR_ACTUAL = ? OR C.SUPERVISOR_ACTUAL IS NULL)";
-            params.push(usuario);
-        }
+        // if (!perfiles.includes('005')) {
+        query += ' AND TRIM(u.CH_CODI_USUARIO) = ?';
+        params.push(usuario);
+        // }
 
         const result = await db.query(query, params);
         const valor = result && result[0] ? (result[0].cantidad || result[0].CANTIDAD || 0) : 0;
         res.json({ cantidad: valor });
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
+
+
+
 
 // Exportar todo
 module.exports = {

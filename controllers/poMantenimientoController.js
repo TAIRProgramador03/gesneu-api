@@ -252,15 +252,21 @@ const getUltimaFechaInspeccionPorPlaca = async (req, res) => {
         }
         // REFACTORIZADO: Busca en NEU_DETALLE (Consulta simplificada para DB2)
         const query = `
-            SELECT FECHA_SUCESO AS FECHA_REGISTRO
-            FROM SPEED400AT.NEU_DETALLE
+            SELECT 
+                FECHA_INSPECCION AS FECHA_REGISTRO,
+                FECHA_ASIGNACION
+            FROM SPEED400PI.NEU_VKILOMETRAJE
             WHERE PLACA = ?
-              AND TIPO_ACCION LIKE '%INSPECCION%'
-            ORDER BY FECHA_SUCESO DESC
-            FETCH FIRST 1 ROW ONLY
-        `;
+            ORDER BY ID DESC
+            FETCH FIRST 1 ROW ONLY`;
+
         const result = await db.query(query, [placa]);
-        res.json({ ultima: result[0]?.FECHA_REGISTRO || null });
+        res.json(
+            {
+                fecha_registro: result[0]?.FECHA_REGISTRO || null,
+                fecha_asignacion: result[0]?.FECHA_ASIGNACION || null
+            },
+        );
     } catch (error) {
         console.error("Error al consultar ultima inspeccion por placa:", error);
         res.status(500).json({ error: "Error al consultar la última fecha de inspección por placa", detalle: error.message });

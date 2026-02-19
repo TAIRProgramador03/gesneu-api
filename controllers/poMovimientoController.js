@@ -15,37 +15,76 @@ const listarUltimosMovimientosPorPlaca = async (req, res) => {
         }
         const placaTrim = placa.trim();
 
+        // let query = `
+        //     SELECT 
+        //         d.ID_MOVIMIENTO,
+        //         d.CODIGO_CASCO AS CODIGO,
+        //         d.POSICION_NUEVA AS POSICION_NEU,
+        //         A.DESCRIPCION AS TIPO_MOVIMIENTO, -- Action Description (Montaje, Ingreso)
+        //         d.FECHA_SUCESO AS FECHA_MOVIMIENTO,
+        //         d.ODOMETRO_VEHICULO AS KILOMETRO,
+        //         d.PLACA,
+        //         d.SUPERVISOR AS USUARIO_SUPER,
+        //         d.OBSERVACION
+        //         -- NOTA: NO devolvemos 'ESTADO' para evitar sobrescribir la data maestra (NEU_CABECERA)
+        //     FROM SPEED400AT.NEU_DETALLE d
+        //     LEFT JOIN SPEED400AT.NEU_ACCION A ON d.ID_ACCION = A.ID_ACCION
+        //     INNER JOIN (
+        //         SELECT CODIGO_CASCO, MAX(FECHA_SUCESO) AS FECHA_MAX
+        //         FROM SPEED400AT.NEU_DETALLE
+        //         WHERE UPPER(TRIM(PLACA)) = UPPER(?)
+        //         GROUP BY CODIGO_CASCO
+        //     ) ult ON d.CODIGO_CASCO = ult.CODIGO_CASCO AND d.FECHA_SUCESO = ult.FECHA_MAX
+        //     WHERE UPPER(TRIM(d.PLACA)) = UPPER(?)
+        // `;
+
+        // let query = `
+        //             SELECT 
+        //                 NM."ID",
+        //                 NM.ID_NEUMATICO,
+        //                 NM.POSICION_NUEVA AS POSICION_NEU,
+        //                 NA.DESCRIPCION AS TIPO_MOVIMIENTO,
+        //                 NM.FECHA_MOVIMIENTO,
+        //                 NM.ODOMETRO_VEHICULO AS KILOMETRO,
+        //                 NM.PLACA,
+        //                 NM.COD_SUPERVISOR AS USUARIO_SUPER,
+        //                 NM.OBS AS OBSERVACION
+        //             FROM SPEED400PI.NEU_MOVIMIENTOS NM
+        //             INNER JOIN SPEED400AT.NEU_ACCION NA
+        //                 ON na.ID_ACCION = nm.ID_ACCION
+        //             WHERE NM.PLACA = ?`
+
         let query = `
-            SELECT 
-                d.ID_MOVIMIENTO,
-                d.CODIGO_CASCO AS CODIGO,
-                d.POSICION_NUEVA AS POSICION_NEU,
-                A.DESCRIPCION AS TIPO_MOVIMIENTO, -- Action Description (Montaje, Ingreso)
-                d.FECHA_SUCESO AS FECHA_MOVIMIENTO,
-                d.ODOMETRO_VEHICULO AS KILOMETRO,
-                d.PLACA,
-                d.SUPERVISOR AS USUARIO_SUPER,
-                d.OBSERVACION
-                -- NOTA: NO devolvemos 'ESTADO' para evitar sobrescribir la data maestra (NEU_CABECERA)
-            FROM SPEED400AT.NEU_DETALLE d
-            LEFT JOIN SPEED400AT.NEU_ACCION A ON d.ID_ACCION = A.ID_ACCION
-            INNER JOIN (
-                SELECT CODIGO_CASCO, MAX(FECHA_SUCESO) AS FECHA_MAX
-                FROM SPEED400AT.NEU_DETALLE
-                WHERE UPPER(TRIM(PLACA)) = UPPER(?)
-                GROUP BY CODIGO_CASCO
-            ) ult ON d.CODIGO_CASCO = ult.CODIGO_CASCO AND d.FECHA_SUCESO = ult.FECHA_MAX
-            WHERE UPPER(TRIM(d.PLACA)) = UPPER(?)
+        SELECT
+            NM."ID",
+            NM.ID_NEUMATICO,
+            NM.POSICION_NUEVA AS POSICION_NEU,
+            NA.DESCRIPCION AS TIPO_MOVIMIENTO,
+            NM.FECHA_MOVIMIENTO,
+            NM.PLACA,
+            NM.COD_SUPERVISOR AS USUARIO_SUPER,
+            NM.OBS AS OBSERVACIO,
+            (SELECT VK.KILOMETRAJE
+                FROM SPEED400PI.NEU_VKILOMETRAJE VK
+                WHERE VK.PLACA = NM.PLACA
+                ORDER BY VK.ID DESC
+                FETCH FIRST 1 ROW ONLY
+            ) AS KILOMETRO
+        FROM SPEED400PI.NEU_MOVIMIENTOS NM
+        INNER JOIN SPEED400AT.NEU_ACCION NA
+            ON NA.ID_ACCION = NM.ID_ACCION
+        WHERE NM.PLACA = ?
         `;
 
-        const params = [placaTrim, placaTrim];
+        const params = [placaTrim];
 
-        if (usuario_super) {
-            query += ` AND UPPER(TRIM(d.SUPERVISOR)) = UPPER(?)`;
-            params.push(usuario_super.trim());
-        }
+        // TODO:
+        // if (usuario_super) {
+        //     query += ` AND UPPER(TRIM(d.SUPERVISOR)) = UPPER(?)`;
+        //     params.push(usuario_super.trim());
+        // }
 
-        query += ` ORDER BY d.POSICION_NUEVA`;
+        query += ` ORDER BY NM.POSICION_NUEVA`;
 
         const result = await db.query(query, params);
         res.json(result);
