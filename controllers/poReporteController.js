@@ -43,8 +43,40 @@ exports.getNeuInspeccionPorFechas = async (req, res) => {
         if (!fechaInicio || !fechaFin || !usuario) {
             return res.status(400).json({ error: 'Debe proporcionar usuario, fechaInicio y fechaFin' });
         }
-        const result = await db.query('CALL SPEED400AT.SP_LISTAR_NEU_INSPECCION(?, ?, ?)', [usuario, fechaInicio, fechaFin]);
+
+        // EGAMBOA
+        // GESNEU
+
+        let params = [fechaInicio, fechaFin]
+        let queryBase = `
+                SELECT
+                    NP.CODIGO,
+                    NM.POSICION_NUEVA AS POSICION_NEU,
+                    NM.REMANENTE_MEDIDO AS REMANENTE ,
+                    NM.KM_RECORRIDOS_ETAPA AS KILOMETRO ,
+                    NM.FECHA_INSPECCION AS FECHA_REGISTRO, -- FECHA_REGISTRO
+                    PLACA,
+                    NM.PORCENTAJE_VIDA AS ESTADO ,
+                    USUARIO_REGISTRADOR AS USUARIO_SUPER
+                FROM
+                    SPEED400PI.NEU_MOVIMIENTOS NM
+                LEFT JOIN SPEED400PI.NEU_PADRON NP
+                    ON NP."ID" = NM.ID_NEUMATICO
+                WHERE
+                    NM.ID_ACCION = 7 AND
+                    NM.FECHA_INSPECCION BETWEEN ? AND ?`
+
+        if (usuario.trim() !== 'EGAMBOA' && usuario.trim() !== 'GESNEU') {
+            queryBase += ' AND USUARIO_REGISTRADOR = ?'
+            params.push(usuario)
+        }
+
+        queryBase += ' ORDER BY NM.FECHA_INSPECCION'
+
+        const result = await db.query(queryBase, params);
+
         const data = Array.isArray(result) ? result.filter(r => r && r.CODIGO) : [];
+
         res.json(data);
     } catch (error) {
         console.error('Error al obtener inspecciones de neumáticos:', error);

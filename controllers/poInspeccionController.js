@@ -75,11 +75,23 @@ const crearInspeccion = async (req, res) => {
 
         // falta la fecha se asignación
 
+
+        const sqlGetVehiLast = `    
+            SELECT 
+                FECHA_ASIGNACION
+            FROM SPEED400PI.NEU_VKILOMETRAJE
+            WHERE PLACA = ?
+            ORDER BY ID DESC
+            FETCH FIRST 1 ROW ONLY
+            `;
+        const resultVehiLast = await db.query(sqlGetVehiLast, [placa]);
+        const lastVehiculo = resultVehiLast[0]
+
         sqlInsertVehi = `
             INSERT INTO SPEED400PI.NEU_VKILOMETRAJE
                 (PLACA, KILOMETRAJE, FECHA_ASIGNACION, FECHA_INSPECCION)
             VALUES (?, ?, ?, ?)`;
-        await db.query(sqlInsertVehi, [placa, kilometraje, '2026-02-15', fecha_inspeccion]);
+        await db.query(sqlInsertVehi, [placa, kilometraje, lastVehiculo.FECHA_ASIGNACION ?? '2004-05-30', fecha_inspeccion]);
 
         res.status(201).json({ mensaje: "Inspecciones registradas correctamente (Normalizado)", resultados });
 

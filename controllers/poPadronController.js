@@ -41,6 +41,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
             COSTO: encabezados.find(col => limpiarEncabezado(col).includes("COSTO")),
             PROVEEDOR: encabezados.find(col => limpiarEncabezado(col).includes("PROVEEDOR")),
             FECHA_COMPRA: encabezados.find(col => limpiarEncabezado(col).includes("FECHA COMPRA")),
+            FECHA_ENVIO: encabezados.find(col => limpiarEncabezado(col).includes("FECHA ENVIO")),
         };
 
         if (Object.values(columnas).every(col => !col)) return res.status(400).json({ error: "El archivo Excel no contiene ninguna columna reconocida." });
@@ -152,18 +153,37 @@ const cargarPadronDesdeExcel = async (req, res) => {
                             return null;
                         })()
                         : null,
+                    FECHA_ENVIO: columnas.FECHA_ENVIO && fila[columnas.FECHA_ENVIO]
+                        ? (() => {
+                            const valor = fila[columnas.FECHA_ENVIO];
+                            if (typeof valor === 'number') {
+                                const fecha = new Date(Date.UTC(1899, 11, 30) + valor * 86400000);
+                                return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
+                            }
+                            if (typeof valor === 'string') {
+                                const v = valor.trim();
+                                if (/^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
+                                    const [dia, mes, anio] = v.split('/');
+                                    return `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+                                }
+                                const d = new Date(v);
+                                return isNaN(d) ? null : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                            }
+                            return null;
+                        })()
+                        : null,
                     ID_MARCA: idMarca,
                 };
 
                 // INSERT - NEUMATICO
 
-                const query = `INSERT INTO SPEED400PI.NEU_PADRON (CODIGO, ID_MARCA, MEDIDA, DISENO, PR, CARGA, VELOCIDAD, FECHA_FABRICACION_COD, REMANENTE_INICIAL, FECHA_COMPRA, COSTO_INICIAL, ID_PROVEEDOR, RQ, OC, PROYECTO) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                const query = `INSERT INTO SPEED400PI.NEU_PADRON (CODIGO, ID_MARCA, MEDIDA, DISENO, PR, CARGA, VELOCIDAD, FECHA_FABRICACION_COD, REMANENTE_INICIAL, FECHA_COMPRA, COSTO_INICIAL, ID_PROVEEDOR, RQ, OC, PROYECTO, FECHA_ENVIO) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
                 const params = [
                     filaLimpia.CODIGO, filaLimpia.ID_MARCA, filaLimpia.MEDIDA, filaLimpia.DISENO,
                     filaLimpia.PR, filaLimpia.CARGA, filaLimpia.VELOCIDAD, filaLimpia.FECHA_FABRICACION_COD, filaLimpia.REMANENTE_INICIAL,
                     filaLimpia.FECHA_COMPRA, filaLimpia.COSTO_INICIAL, filaLimpia.ID_PROVEEDOR,
-                    filaLimpia.RQ, filaLimpia.OC, filaLimpia.PROYECTO
+                    filaLimpia.RQ, filaLimpia.OC, filaLimpia.PROYECTO, filaLimpia.FECHA_ENVIO
                 ];
 
                 await db.query(query, params);

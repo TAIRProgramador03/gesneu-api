@@ -91,7 +91,7 @@ const buscarVehiculoPorPlaca = async (req, res) => {
     if (result && result.length > 0) {
       res.json(result[0]);
     } else {
-      res.status(404).json({ mensaje: "Vehículo no encontrado" });
+      res.status(202).json({ mensaje: "Vehículo no encontrado" });
     }
   } catch (error) {
     console.error("❌ Error al buscar vehículo:", error, error.stack);

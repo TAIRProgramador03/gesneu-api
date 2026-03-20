@@ -121,24 +121,33 @@ const contarNeumaticoRecuperados = async (req, res) => {
         const usuario = req.session.user.usuario;
         const perfiles = req.session.user.perfiles?.map(p => p.codigo) || [];
 
-        // ID_ESTADO:
-        // 4 -> RECUPERADO
+        // let query = `
+        //             SELECT
+        //                 COUNT(*) AS cantidad
+        //             FROM SPEED400AT.MAE_TALLER_X_USUARIO u
+        //                 INNER JOIN SPEED400AT.PO_TALLER t
+        //                     ON u.ID_TALLER = t.ID
+        //                 INNER JOIN SPEED400PI.NEU_INFORMACION i
+        //                     ON t.DESCRIPCION = i.PROYECTO_ACTUAL
+        //                 INNER JOIN SPEED400PI.NEU_PADRON p
+        //                     ON i.ID_NEUMATICO = p.ID
+        //             WHERE i.ID_ESTADO = 4`
 
         let query = `
-                    SELECT
-                        COUNT(*) AS cantidad
-                    FROM SPEED400AT.MAE_TALLER_X_USUARIO u
-                        INNER JOIN SPEED400AT.PO_TALLER t
-                            ON u.ID_TALLER = t.ID
-                        INNER JOIN SPEED400PI.NEU_INFORMACION i
-                            ON t.DESCRIPCION = i.PROYECTO_ACTUAL
-                        INNER JOIN SPEED400PI.NEU_PADRON p
-                            ON i.ID_NEUMATICO = p.ID
-                    WHERE i.ID_ESTADO = 4`
+            SELECT
+                COUNT(*) AS cantidad
+            FROM SPEED400AT.MAE_TALLER_X_USUARIO u
+                INNER JOIN SPEED400AT.PO_TALLER t
+                    ON u.ID_TALLER = t.ID
+                INNER JOIN SPEED400PI.NEU_INFORMACION i
+                    ON t.DESCRIPCION = i.PROYECTO_ACTUAL
+                    AND i.ES_RECUPERADO = TRUE
+                INNER JOIN SPEED400PI.NEU_PADRON p
+                    ON i.ID_NEUMATICO = p.ID`;
 
         let params = [];
         // if (!perfiles.includes('005')) {
-        query += ' AND TRIM(u.CH_CODI_USUARIO) = ?';
+        query += ' WHERE TRIM(u.CH_CODI_USUARIO) = ?';
         params.push(usuario);
         // }
 
@@ -211,6 +220,37 @@ const contarNeumaticosAsignados = async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
 
+const costoNeumaticosAsignados = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    try {
+        const usuario = req.session.user.usuario;
+        const perfiles = req.session.user.perfiles?.map(p => p.codigo) || [];
+
+        // ID_ESTADO:
+        // 2 -> ASIGNADO
+
+        let query = `SELECT
+                    SUM(p.COSTO_INICIAL) AS costo_total
+                FROM SPEED400AT.MAE_TALLER_X_USUARIO u
+                    INNER JOIN SPEED400AT.PO_TALLER t
+                        ON u.ID_TALLER = t.ID
+                    INNER JOIN SPEED400PI.NEU_INFORMACION i
+                        ON t.DESCRIPCION = i.PROYECTO_ACTUAL
+                    INNER JOIN SPEED400PI.NEU_PADRON p
+                        ON i.ID_NEUMATICO = p.ID
+                WHERE i.ID_ESTADO = 2`
+
+        let params = [];
+        // if (!perfiles.includes('005')) {
+        query += ' AND TRIM(u.CH_CODI_USUARIO) = ?';
+        params.push(usuario);
+        // }
+        const result = await db.query(query, params);
+        costo_total = result[0].COSTO_TOTAL;
+        res.json({ costo_total });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
 const contarNeumaticosDisponibles = async (req, res) => {
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
     try {
@@ -244,8 +284,105 @@ const contarNeumaticosDisponibles = async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 };
 
+const neumaticosRecuperados = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    try {
+        const usuario = req.session.user.usuario;
+        const perfiles = req.session.user.perfiles?.map(p => p.codigo) || [];
 
+        const { proyectoOrigen, codigoNeu } = req.query
 
+        let query = `
+            SELECT
+                NI.ID_NEUMATICO,
+                NP.CODIGO,
+                NI.PROYECTO_ACTUAL,
+                CAST(NI.ES_RECUPERADO AS SMALLINT) AS RECUPERADO,
+                NE.CODIGO_INTERNO,
+                NI.PORCENTAJE_VIDA
+            FROM SPEED400PI.NEU_INFORMACION NI
+            LEFT JOIN SPEED400AT.NEU_ESTADO NE
+                ON NE.ID_ESTADO = NI.ID_ESTADO
+            LEFT JOIN SPEED400PI.NEU_PADRON NP
+                ON NI.ID_NEUMATICO = NP.ID
+            WHERE NI.ES_RECUPERADO = TRUE
+            AND NI.ID_ESTADO = 1
+            AND NI.PROYECTO_ACTUAL = ?`
+
+        let paramsX = [proyectoOrigen]
+
+        if (!!codigoNeu && codigoNeu.length >= 1) {
+            query += " AND NP.CODIGO LIKE ?"
+            paramsX.push(`%${codigoNeu}%`)
+        }
+
+        const result = await db.query(query, paramsX);
+        res.json(result);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+const proyectos = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    try {
+
+        let query = `
+            SELECT
+                ID,
+                DESCRIPCION
+            FROM SPEED400PI.PO_TALLER
+            ORDER BY DESCRIPCION ASC
+            `
+
+        const result = await db.query(query);
+        res.json(result);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+const reubicarNeumaticosPorProyecto = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+
+    const usuario = req.session.user.usuario;
+    try {
+
+        const { neumaticosTrasladados, proyectoDestino } = req.body;
+
+        console.log({ neumaticosTrasladados, proyectoDestino })
+
+        neumaticosTrasladados.forEach(async (neumatico) => {
+
+            // 1. Insertar la reubicacion
+
+            const sqlHTRASLADOS = `
+                INSERT INTO SPEED400PI.NEU_HTRASLADOS(
+                    CODIGO, PROYECTO_ORIGEN, PROYECTO_DESTINO, USUARIO_REGISTRADOR
+                ) VALUES (?, ?, ?, ?)
+            `;
+
+            await db.query(sqlHTRASLADOS, [
+                neumatico.codigo, neumatico.proyecto, proyectoDestino, usuario
+            ]);
+
+            // 2. Actualizar la ni_informacion
+
+            const sqlNINFORMACION = `
+                UPDATE SPEED400PI.NEU_INFORMACION
+                SET PROYECTO_ACTUAL = ?
+                WHERE ID_NEUMATICO = ?
+            `;
+
+            await db.query(sqlNINFORMACION, [
+                proyectoDestino, neumatico.id
+            ]);
+
+        });
+
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+
+    res.status(201).json({ mensaje: "Reubicaciones realizadas correctamente." });
+}
 
 // Exportar todo
 module.exports = {
@@ -256,10 +393,14 @@ module.exports = {
     contarProyectosNeumatico,
     contarNeumaticos,
     contarNeumaticosAsignados,
+    costoNeumaticosAsignados,
     contarNeumaticosDisponibles,
     contarNeumaticosBajaDefinitiva,
     contarNeumaticoRecuperados,
     // Stub functions for route compatibility if they exist
     getNeumaticosBajaDefinitiva: getTodosNeumaticos, // Or specific filter if needed
-    getNeumaticoRecuperados: getTodosNeumaticos
+    getNeumaticoRecuperados: getTodosNeumaticos,
+    getNeumaticosRecuperados: neumaticosRecuperados,
+    getAllProyects: proyectos,
+    reubicarNeumaticosPorProyecto
 };

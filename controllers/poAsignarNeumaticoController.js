@@ -49,7 +49,7 @@ const asignarNeumatico = async (req, res) => {
         try {
             // Validar que la fecha de asignación no sea anterior a la fecha de registro del neumático
             const sqlFechaRegistro =
-                `SELECT FECHA_REGISTRO
+                `SELECT FECHA_ENVIO AS FECHA_REGISTRO
                     FROM SPEED400PI.NEU_PADRON
                 WHERE CODIGO = ?`;
             const resultFecha = await db.query(sqlFechaRegistro, [CodigoNeumatico]);

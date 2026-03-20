@@ -217,4 +217,10 @@ router.get('/ultima-fecha-inspeccion', poMantenimientoController.getUltimaFechaI
  */
 router.get('/ultima-fecha-inspeccion-por-placa', poMantenimientoController.getUltimaFechaInspeccionPorPlaca);
 
+router.get('/fechas-inspeccion-vehicular-por-placa', poMantenimientoController.getFechasInspeccionVehicularPorPlaca);
+
+router.get('/inspecciones-por-placa', poMantenimientoController.getInspeccionesPorPlaca);
+
+router.get('/neumaticos-por-inspeccion', poMantenimientoController.getNeumaticosPorInspeccion);
+
 module.exports = router;

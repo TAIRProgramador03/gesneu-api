@@ -79,7 +79,7 @@ const listarNeumaticosAsignados = async (req, res) => {
         let query = `
             SELECT
                 np."ID" AS ID,
-                np.FECHA_REGISTRO AS FECHA_REGISTRO,
+                np.FECHA_ENVIO AS FECHA_REGISTRO,
                 ni.PLACA_ACTUAL AS PLACA,
                 ni.POSICION_ACTUAL AS POSICION_NEU,
                 np.CODIGO AS CODIGO_NEU,
@@ -89,13 +89,14 @@ const listarNeumaticosAsignados = async (req, res) => {
                 np.REMANENTE_INICIAL AS REMANENTE_ORIGINAL,
                 ni.PORCENTAJE_VIDA AS ESTADO,
                 ne.DESCRIPCION AS TIPO_MOVIMIENTO,
+                CAST(ni.ES_RECUPERADO AS SMALLINT) AS RECUPERADO,
                 (SELECT NM.FECHA_ASIGNACION
                     FROM SPEED400PI.NEU_MOVIMIENTOS NM
                     WHERE NI.PLACA_ACTUAL = NM.PLACA AND NM.ID_ACCION = 2 AND np.ID = NM.ID_NEUMATICO
-                    ORDER BY NM.ID DESC
-                    FETCH FIRST 1 ROW ONLY
-                ) AS FECHA_ASIGNADO,
-                ni.FECHA_ULTIMA_ACTUALIZACION AS FECHA_ULTIMO_SUCESO,
+                    ORDER BY NM.ID ASC
+                    FETCH FIRST 1 ROW ONLY  
+                ) AS FECHA_ASIGNACION,
+                DATE(np.FECHA_REGISTRO) AS FECHA_ULTIMO_SUCESO,
                 (SELECT COALESCE(SUM(nmo.KM_RECORRIDOS_ETAPA), 0)
                     FROM SPEED400PI.NEU_MOVIMIENTOS nmo
                     WHERE nmo.ID_NEUMATICO = np."ID"

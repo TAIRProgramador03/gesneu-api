@@ -188,6 +188,10 @@ router.get('/cantidad', poNeumaticoController.contarNeumaticos);
  */
 router.get('/asignados/cantidad', poNeumaticoController.contarNeumaticosAsignados);
 
+router.get('/asignados/costo', poNeumaticoController.costoNeumaticosAsignados);
+
+router.post('/reubicar-neumaticos-por-proyecto', poNeumaticoController.reubicarNeumaticosPorProyecto);
+
 /**
  * @swagger
  * /api/po-neumaticos/disponibles/cantidad:
@@ -372,5 +376,9 @@ router.get('/baja-definitiva', poNeumaticoController.getNeumaticosBajaDefinitiva
  *         description: Error del servidor
  */
 router.get('/recuperados', poNeumaticoController.getNeumaticoRecuperados);
+
+router.get('/recuperados-para-asignar', poNeumaticoController.getNeumaticosRecuperados);
+
+router.get('/listar-proyectos', poNeumaticoController.getAllProyects);
 
 module.exports = router;

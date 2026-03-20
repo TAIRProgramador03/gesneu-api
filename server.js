@@ -10,6 +10,7 @@ const padronRoutes = require("./routes/poPadron");
 const poBuscarVehiculoRoutes = require("./routes/poBuscarVehiculoRoutes");
 
 const poAsignadosRoutes = require("./routes/poAsignadosRoutes");
+const poNeumaticosDisponiblesRoutes = require("./routes/poNeumaticosDisponiblesRoutes");
 const poAsignarNeumaticoRoutes = require("./routes/poAsignarNeumaticoRoutes");
 const poInicioSesionRoutes = require("./routes/poInicioSesionRoutes");
 const poInspeccionRoutes = require("./routes/poInspeccionRoutes");
@@ -120,6 +121,9 @@ app.get("/", (req, res) => {
 app.use("/api", poInicioSesionRoutes);
 app.use("/api/po-neumaticos", poNeumaticoRoutes);
 app.use("/api/po-asignados", poAsignadosRoutes);
+
+app.use("/api/po-neumaticos-disponibles", poNeumaticosDisponiblesRoutes);
+
 app.use("/api/po-supervisores", poSupervisoresRoutes);
 app.use("/api/po-padron", padronRoutes);
 app.use("/api/vehiculo", poBuscarVehiculoRoutes);
