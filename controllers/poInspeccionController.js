@@ -38,6 +38,7 @@ const crearInspeccion = async (req, res) => {
         let placa = ''
         let kilometraje = 0
         let fecha_inspeccion = '2004/05/30'
+        let tipo_terreno = ''
 
         for (const datos of datosArray) {
             try {
@@ -58,6 +59,7 @@ const crearInspeccion = async (req, res) => {
                 placa = datos.PLACA
                 kilometraje = datos.KILOMETRO
                 fecha_inspeccion = datos.FECHA_INSPECCION
+                tipo_terreno = datos.TIPO_TERRENO
 
                 await neumaticoService.registrarInspeccion(dataServicio, usuario);
                 resultados.push({ codigo: datos.CODIGO, status: 'OK' });
@@ -89,9 +91,9 @@ const crearInspeccion = async (req, res) => {
 
         sqlInsertVehi = `
             INSERT INTO SPEED400PI.NEU_VKILOMETRAJE
-                (PLACA, KILOMETRAJE, FECHA_ASIGNACION, FECHA_INSPECCION)
-            VALUES (?, ?, ?, ?)`;
-        await db.query(sqlInsertVehi, [placa, kilometraje, lastVehiculo.FECHA_ASIGNACION ?? '2004-05-30', fecha_inspeccion]);
+                (PLACA, KILOMETRAJE, FECHA_ASIGNACION, FECHA_INSPECCION, TIPO_TERRENO)
+            VALUES (?, ?, ?, ?, ?)`;
+        await db.query(sqlInsertVehi, [placa, kilometraje, lastVehiculo.FECHA_ASIGNACION ?? '2004-05-30', fecha_inspeccion, tipo_terreno]);
 
         res.status(201).json({ mensaje: "Inspecciones registradas correctamente (Normalizado)", resultados });
 

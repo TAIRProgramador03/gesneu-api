@@ -153,7 +153,8 @@ const neumaticoService = {
         kmVida = 0,
         fecha_inspeccion = null,
         nuevoPorcentaje = 0,
-        fecha_mantenimiento = null
+        fecha_mantenimiento = null,
+        tipoBaja = null
     }) => {
 
         const sqlEstado = `SELECT ID_ESTADO FROM SPEED400AT.NEU_ESTADO WHERE CODIGO_INTERNO = ?`;
@@ -180,8 +181,9 @@ const neumaticoService = {
                 FECHA_ASIGNACION,
                 FECHA_INSPECCION,
                 PORCENTAJE_VIDA,
-                FECHA_RECUPERADO
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                FECHA_RECUPERADO,
+                TIPO_BAJA
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
         const params = [
             idNeumatico, idVehiculo || null,
@@ -195,7 +197,8 @@ const neumaticoService = {
             FechaAsignacion || null,
             fecha_inspeccion || null,
             nuevoPorcentaje || 0,
-            fecha_mantenimiento
+            fecha_mantenimiento,
+            tipoBaja
         ];
         return await db.query(sql, params);
     },
@@ -421,41 +424,10 @@ const neumaticoService = {
      */
     desasignarNeumatico: async (data, usuario) => {
         const {
-            CODIGO, TIPO_MOVIMIENTO, OBSERVACION, KILOMETRO, REMANENTE, COD_SUPERVISOR, ID_OPERACION
+            CODIGO, TIPO_MOVIMIENTO, OBSERVACION, KILOMETRO, REMANENTE, COD_SUPERVISOR, ID_OPERACION, TIPO_BAJA
         } = data;
 
-        // TIPO_MOVIMIENTO suele ser 'BAJA DEFINITIVA' o 'RECUPERADO'
         const nuevoEstado = (TIPO_MOVIMIENTO === 'BAJA DEFINITIVA') ? 'BAJA' : 'RECUPERADO';
-
-
-        // 1. Obtener ID y PLACA actual del neumático
-        // const sqlGetNeumatico = `
-        //     SELECT ID_NEUMATICO, PLACA_ACTUAL, POSICION_ACTUAL 
-        //     FROM SPEED400AT.NEU_CABECERA 
-        //     WHERE CODIGO_CASCO = ?
-        // `;
-
-        // const sqlGetNeumatico = `
-        // SELECT NI.ID_NEUMATICO, NI.PLACA_ACTUAL, NI.POSICION_ACTUAL
-        //     FROM SPEED400PI.NEU_INFORMACION NI
-        // LEFT JOIN SPEED400PI.NEU_PADRON NP
-        //     ON NP."ID" = NI.ID_NEUMATICO
-        // WHERE NP.CODIGO = ?`;
-
-        // const sqlGetNeumatico = `
-        // SELECT
-        //     NI.ID_NEUMATICO,
-        //     NI.PLACA_ACTUAL,
-        //     NI.POSICION_ACTUAL,
-        //     NI.ODOMETRO_AL_MONTAR AS ODOMETRO_VEHICULO,
-        //     NI.PRESION_ACTUAL AS PRESION_MEDIDA,
-        //     NI.REMANENTE_ACTUAL AS REMANENTE_MEDIDO,
-        //     NI.KM_TOTAL_VIDA AS KM_RECORRIDOS_ETAPA,
-        //     NI.PORCENTAJE_VIDA
-        //     FROM SPEED400PI.NEU_INFORMACION NI
-        // LEFT JOIN SPEED400PI.NEU_PADRON NP
-        //     ON NP."ID" = NI.ID_NEUMATICO
-        // WHERE NP.CODIGO = ?`;
 
         const sqlGetNeumatico = `
         SELECT
@@ -501,28 +473,6 @@ const neumaticoService = {
         const TORQUE_APLICADO = resultNeumatico[0].TORQUE_APLICADO;
         const ULTIMA_INSPECCION = resultNeumatico[0].ULTIMA_INSPECCION;
 
-        // const KM_RECORRIDOS_ETAPA = resultNeumatico[0].KM_RECORRIDOS_ETAPA;
-
-        // NOTA: NO validamos si está asignado porque RECUPERADO/BAJA pueden aplicarse
-        // a neumáticos que ya fueron desasignados previamente
-        // Solo agregamos un nuevo estado al historial  
-
-        // NOTA: La validación de posiciones vacías se hace en el CONTROLADOR
-        // de forma global para TODAS las desasignaciones en batch
-        // Esto evita validaciones individuales que no ven el estado final
-
-        // 3. Obtener último registro para heredar datos si no se proporcionan
-        // const sqlUltimo = `
-        //     SELECT ODOMETRO_VEHICULO, PRESION_MEDIDA, REMANENTE_MEDIDO, KM_RECORRIDOS_ETAPA
-        //     FROM SPEED400AT.NEU_DETALLE
-        //     WHERE ID_NEUMATICO = ?
-        //     ORDER BY FECHA_SUCESO DESC
-        //     FETCH FIRST 1 ROW ONLY
-        // `;
-
-        // const resultUltimo = await db.query(sqlUltimo, [idNeumatico]);
-        // const ultimoRegistro = resultUltimo && resultUltimo[0] ? resultUltimo[0] : {};
-
         // Heredar valores si no se proporcionan nuevos
         const odometroFinal = ODOMETRO_VEHICULO || null;
         const remanenteFinal = REMANENTE_MEDIDO || null;
@@ -567,6 +517,7 @@ const neumaticoService = {
             idNeumatico,
             codigo: CODIGO,
             tipoAccion: accionCodigo,
+            tipoBaja: TIPO_BAJA,
             estadoDestino: nuevoEstado,
             placa: placaActual,
             posicionAnterior: posicionActual,

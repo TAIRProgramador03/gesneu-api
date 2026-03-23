@@ -390,12 +390,6 @@ const desasignarConReemplazo = async (req, res) => {
         // VALIDACIÓN GLOBAL: Verificar que después de TODO, ninguna posición quede vacía
         if (desasignaciones.length > 0) {
 
-            // const sqlGetPlaca = `
-            //     SELECT PLACA_ACTUAL 
-            //     FROM SPEED400AT.NEU_CABECERA 
-            //     WHERE CODIGO_CASCO = ?
-            // `;
-
             const sqlGetPlaca = `
             SELECT PLACA_ACTUAL
             FROM SPEED400PI.NEU_INFORMACION NI
@@ -407,19 +401,6 @@ const desasignarConReemplazo = async (req, res) => {
             const placa = resPlaca[0]?.PLACA_ACTUAL;
 
             if (placa) {
-
-                // Obtener posiciones actuales
-                // const sqlPosicionesActuales = `
-                //     SELECT POSICION_ACTUAL, COUNT(*) as TOTAL
-                //     FROM SPEED400AT.NEU_CABECERA
-                //     WHERE PLACA_ACTUAL = ?
-                //       AND POSICION_ACTUAL IS NOT NULL
-                //       AND POSICION_ACTUAL != ''
-                //       AND ID_ESTADO IN (
-                //           SELECT ID_ESTADO FROM SPEED400AT.NEU_ESTADO 
-                //           WHERE CODIGO_INTERNO = 'ASIGNADO'
-                //       )
-                //     GROUP BY POSICION_ACTUAL`;
 
                 let sqlPosicionesActuales =
                     `SELECT NI.POSICION_ACTUAL, COUNT(*) AS TOTAL
@@ -444,12 +425,6 @@ const desasignarConReemplazo = async (req, res) => {
 
                 // Simular desasignaciones (decrementar)
                 for (const datos of desasignaciones) {
-
-                    // const sqlGetPosicion = `
-                    //     SELECT POSICION_ACTUAL 
-                    //     FROM SPEED400AT.NEU_CABECERA 
-                    //     WHERE CODIGO_CASCO = ?
-                    // `;
 
                     const sqlGetPosicion = `
                     SELECT POSICION_ACTUAL
@@ -517,6 +492,7 @@ const desasignarConReemplazo = async (req, res) => {
             await neumaticoService.desasignarNeumatico({
                 CODIGO: desasignacion.CODIGO,
                 TIPO_MOVIMIENTO: desasignacion.TIPO_MOVIMIENTO,
+                TIPO_BAJA: desasignacion.TIPO_BAJA,
                 OBSERVACION: desasignacion.OBSERVACION,
                 KILOMETRO: desasignacion.KILOMETRO,
                 REMANENTE: desasignacion.REMANENTE,
