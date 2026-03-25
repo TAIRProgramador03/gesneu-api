@@ -354,12 +354,12 @@ const reubicarNeumaticosPorProyecto = async (req, res) => {
 
             const sqlHTRASLADOS = `
                 INSERT INTO SPEED400PI.NEU_HTRASLADOS(
-                    CODIGO, PROYECTO_ORIGEN, PROYECTO_DESTINO, USUARIO_REGISTRADOR
+                    ID_NEUMATICO, PROYECTO_ORIGEN, PROYECTO_DESTINO, USUARIO_REGISTRADOR
                 ) VALUES (?, ?, ?, ?)
             `;
 
             await db.query(sqlHTRASLADOS, [
-                neumatico.codigo, neumatico.proyecto, proyectoDestino, usuario
+                neumatico.id, neumatico.proyecto, proyectoDestino, usuario
             ]);
 
             // 2. Actualizar la ni_informacion
