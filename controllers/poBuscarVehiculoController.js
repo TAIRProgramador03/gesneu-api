@@ -30,7 +30,14 @@ const buscarVehiculoPorPlaca = async (req, res) => {
           WHEN 2 THEN 'CIUDAD'
           WHEN 3 THEN 'SEVERO'
           WHEN 4 THEN 'PENDIENTE'
-        END AS TIPO_TERRENO
+          ELSE 'SIN TIPO DE TRABAJO*'
+        END AS TIPO_TERRENO,
+        CASE VE.ES_RETEN
+          WHEN 0 THEN 'TITULAR'
+          WHEN 1 THEN 'RETÉN'
+          WHEN 2 THEN 'LOGISTICA'
+          ELSE 'SIN RETEN*'
+        END AS RETEN
       FROM SPEED400AT.po_vehiculo AS VE
       INNER JOIN SPEED400AT.MAE_OPERACION_X_USUARIO AS USU
         ON VE.SECOPE = USU.IDOPERACION
