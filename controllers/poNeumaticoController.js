@@ -305,9 +305,10 @@ const neumaticosRecuperados = async (req, res) => {
                 ON NE.ID_ESTADO = NI.ID_ESTADO
             LEFT JOIN SPEED400PI.NEU_PADRON NP
                 ON NI.ID_NEUMATICO = NP.ID
-            WHERE NI.ES_RECUPERADO = TRUE
-            AND NI.ID_ESTADO = 1
-            AND NI.PROYECTO_ACTUAL = ?`
+            WHERE NI.PROYECTO_ACTUAL = ?
+            AND ((NI.ID_ESTADO = 1 AND NI.ES_RECUPERADO = TRUE)
+            OR (NI.ID_ESTADO = 3))
+            `;
 
         let paramsX = [proyectoOrigen]
 

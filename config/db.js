@@ -14,7 +14,7 @@ const db = {
     connect: async () => {
         try {
             //const dsn = process.env.DB_DSN || 'AS400_SYSTEM';
-            const connStr = `DRIVER={${process.env.ODBC_DRIVER}};SYSTEM=${process.env.DB_HOST};UID=${process.env.DB_USER};PWD=${process.env.DB_PASSWORD}`;
+            const connStr = `DRIVER={${process.env.ODBC_DRIVER}};SYSTEM=${process.env.DB_HOST};UID=${process.env.DB_USER};PWD=${process.env.DB_PASSWORD};CCSID=1208;UNICODE=UCS-2`;
             console.log(`🔄 Conectando directamente a ${process.env.DB_HOST}`);
             db.connection = await odbc.connect(connStr);
             console.log('✅ Conectado correctamente');

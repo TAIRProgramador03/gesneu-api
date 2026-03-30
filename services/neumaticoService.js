@@ -255,13 +255,12 @@ const neumaticoService = {
 
         const porcentajeRemantene = Math.round(((Remanente * 100) / (!remanenteInicial ? Remanente : remanenteInicial)))
 
-        // VALIDACIÓN: Solo permitir asignar si está DISPONIBLE
-        if (neumatico.ESTADO_CODIGO !== 'DISPONIBLE') {
-            throw new Error(`El neumático ${CodigoNeumatico} ya se encuentra asignado o no está disponible(Estado: ${neumatico.ESTADO_CODIGO}).Por favor, realice una inspección o desasignación primero.`);
+        // VALIDACIÓN: Si el estado es ASIGNADO no permitir asignar
+        if (neumatico.ESTADO_CODIGO === 'ASIGNADO') {
+            throw new Error(`El neumático ${CodigoNeumatico} ya se encuentra asignado (Estado: ${neumatico.ESTADO_CODIGO}).Por favor, realice una inspección o desasignación primero.`);
         }
 
         // 2. Actualizar Cabecera (Estado y Ubicacion)
-
         const sqlUpdate = `
             UPDATE SPEED400PI.NEU_INFORMACION
             SET

@@ -7,6 +7,11 @@ const listarNeumaticosDisponibles = async (req, res) => {
       return res.status(401).json({ mensaje: 'No autenticado' });
     }
 
+    const { type } = req.query
+
+    console.log({ type })
+
+
     const usuario = req.session.user?.usuario;
 
     let query = `SELECT
@@ -30,7 +35,12 @@ const listarNeumaticosDisponibles = async (req, res) => {
                     ) AS FECHA_RECUPERADO 
                 FROM SPEED400PI.NEU_PADRON np
                 LEFT JOIN SPEED400PI.NEU_INFORMACION ni
-                    ON ni.ID_NEUMATICO = np.ID AND ni.ID_ESTADO = 1
+                    ON ni.ID_NEUMATICO = np.ID`
+
+    if (type === 'desasignacion') query += ` AND (ni.ID_ESTADO = 1 OR ni.ID_ESTADO = 3)`
+    else query += ` AND ni.ID_ESTADO = 1`
+
+    query += ` 
                 LEFT JOIN SPEED400AT.NEU_ESTADO ne
                     ON ne.ID_ESTADO = ni.ID_ESTADO
                 LEFT JOIN SPEED400AT.NEU_MARCA nm
@@ -43,7 +53,7 @@ const listarNeumaticosDisponibles = async (req, res) => {
                     ON u.ID_TALLER = t.ID
                     AND t.DESCRIPCION = ni.PROYECTO_ACTUAL`;
 
-    query += ' ORDER BY np.ID DESC';
+    query += ' ORDER BY np.CODIGO ASC';
 
     const result = await db.query(query, [usuario]);
 
