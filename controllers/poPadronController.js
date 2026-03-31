@@ -37,9 +37,9 @@ const cargarPadronDesdeExcel = async (req, res) => {
             FECHA_FABRICACION_COD: encabezados.find(col => limpiarEncabezado(col).includes("FECHA FABRICACION") || limpiarEncabezado(col).includes("FECHA FABRICACIÓN")),
             RQ: encabezados.find(col => limpiarEncabezado(col).includes("RQ")),
             OC: encabezados.find(col => limpiarEncabezado(col).includes("N° OC")),
-            PROYECTO: encabezados.find(col => limpiarEncabezado(col).includes("PROYECTO")),
+            TALLER: encabezados.find(col => limpiarEncabezado(col).includes("TALLER")),
             COSTO: encabezados.find(col => limpiarEncabezado(col).includes("COSTO")),
-            PROVEEDOR: encabezados.find(col => limpiarEncabezado(col).includes("PROVEEDOR")),
+            PROVEEDOR: encabezados.find(col => limpiarEncabezado(col).includes("RUC PROVEEDOR")),
             FECHA_COMPRA: encabezados.find(col => limpiarEncabezado(col).includes("FECHA COMPRA")),
             FECHA_ENVIO: encabezados.find(col => limpiarEncabezado(col).includes("FECHA ENVIO")),
         };
@@ -69,13 +69,13 @@ const cargarPadronDesdeExcel = async (req, res) => {
                 }
             } else erroresFila.push('Marca no especificada.');
 
-            let medida = columnas.MEDIDA ? (fila[columnas.MEDIDA] || '').trim().substring(0, 20) : null;
-            if (medida) {
-                const existeMedida = await db.query('SELECT 1 FROM SPEED400AT.NEU_MEDIDA WHERE MEDIDA = ?', [medida]);
-                if (!existeMedida || existeMedida.length === 0) {
-                    erroresFila.push(`Medida inválida o mal escrita: '${medida}'.`);
-                }
-            } else erroresFila.push('Medida no especificada.');
+            // let medida = columnas.MEDIDA ? (fila[columnas.MEDIDA] || '').trim().substring(0, 20) : null;
+            // if (medida) {
+            //     const existeMedida = await db.query('SELECT 1 FROM SPEED400AT.NEU_MEDIDA WHERE MEDIDA = ?', [medida]);
+            //     if (!existeMedida || existeMedida.length === 0) {
+            //         erroresFila.push(`Medida inválida o mal escrita: '${medida}'.`);
+            //     }
+            // } else erroresFila.push('Medida no especificada.');
 
             let diseno = columnas.DISENO ? (fila[columnas.DISENO] || '').trim() : null;
             if (diseno) {
@@ -88,7 +88,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
             let rucProveedor = null;
             let proveedorCodigo = columnas.PROVEEDOR ? (fila[columnas.PROVEEDOR] || '').trim() : null;
             if (proveedorCodigo) {
-                const resProveedor = await db.query('SELECT PRONOM, PRORUC FROM SPEED400AT.TPROV WHERE PROCVE = ?', [proveedorCodigo]);
+                const resProveedor = await db.query('SELECT PRONOM, PRORUC FROM SPEED400AT.TPROV WHERE PRORUC = ?', [proveedorCodigo]);
                 if (resProveedor && resProveedor.length > 0) {
                     rucProveedor = resProveedor[0].PRORUC;
                 } else {
@@ -108,11 +108,11 @@ const cargarPadronDesdeExcel = async (req, res) => {
                     const resMarca = await db.query('SELECT ID_MARCA FROM SPEED400AT.NEU_MARCA WHERE UPPER(MARCA) = ?', [marca.toUpperCase()]);
                     if (resMarca && resMarca.length > 0) idMarca = resMarca[0].ID_MARCA;
                 }
-                let idMedida = null;
-                if (medida) {
-                    const resMedida = await db.query('SELECT ID_MEDIDA FROM SPEED400AT.NEU_MEDIDA WHERE MEDIDA = ?', [medida]);
-                    if (resMedida && resMedida.length > 0) idMedida = resMedida[0].ID_MEDIDA;
-                }
+                // let idMedida = null;
+                // if (medida) {
+                //     const resMedida = await db.query('SELECT ID_MEDIDA FROM SPEED400AT.NEU_MEDIDA WHERE MEDIDA = ?', [medida]);
+                //     if (resMedida && resMedida.length > 0) idMedida = resMedida[0].ID_MEDIDA;
+                // }
                 let idDiseno = null;
                 if (diseno) {
                     const resDiseno = await db.query('SELECT ID_DISENO FROM SPEED400AT.NEU_DISENO WHERE DISENO = ?', [diseno]);
@@ -131,7 +131,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
                     FECHA_FABRICACION_COD: columnas.FECHA_FABRICACION_COD ? (fila[columnas.FECHA_FABRICACION_COD] || '').toString().trim().substring(0, 4) : null,
                     RQ: columnas.RQ ? (fila[columnas.RQ] || '').toString().trim().substring(0, 10) : null,
                     OC: columnas.OC ? (fila[columnas.OC] || '').toString().trim().substring(0, 10) : null,
-                    PROYECTO: columnas.PROYECTO ? (fila[columnas.PROYECTO] || '').trim().substring(0, 100) : null,
+                    TALLER: columnas.TALLER ? (fila[columnas.TALLER] || '').trim().substring(0, 100) : null,
                     COSTO_INICIAL: columnas.COSTO ? (parseFloat(fila[columnas.COSTO]) || 0) : null,
                     ID_PROVEEDOR: rucProveedor,
                     FECHA_COMPRA: columnas.FECHA_COMPRA && fila[columnas.FECHA_COMPRA]
@@ -183,7 +183,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
                     filaLimpia.CODIGO, filaLimpia.ID_MARCA, filaLimpia.MEDIDA, filaLimpia.DISENO,
                     filaLimpia.PR, filaLimpia.CARGA, filaLimpia.VELOCIDAD, filaLimpia.FECHA_FABRICACION_COD, filaLimpia.REMANENTE_INICIAL,
                     filaLimpia.FECHA_COMPRA, filaLimpia.COSTO_INICIAL, filaLimpia.ID_PROVEEDOR,
-                    filaLimpia.RQ, filaLimpia.OC, filaLimpia.PROYECTO, filaLimpia.FECHA_ENVIO
+                    filaLimpia.RQ, filaLimpia.OC, filaLimpia.TALLER, filaLimpia.FECHA_ENVIO
                 ];
 
                 await db.query(query, params);
@@ -205,7 +205,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
                     1,
                     null,
                     null,
-                    filaLimpia.PROYECTO,
+                    filaLimpia.TALLER,
                     filaLimpia.REMANENTE_INICIAL,
                     0,
                     0,

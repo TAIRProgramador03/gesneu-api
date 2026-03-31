@@ -74,7 +74,7 @@ const neumaticoService = {
         if (filtroSupervisor) {
             params.push(filtroSupervisor.trim());
         }
-        sql += ' ORDER BY np.ID DESC';
+        sql += ' ORDER BY np.CODIGO ASC';
         return db.query(sql, params);
     },
 
