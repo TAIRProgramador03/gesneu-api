@@ -354,7 +354,9 @@ const neumaticoService = {
                     ORDER BY ID DESC
                     FETCH FIRST 1 ROW ONLY
                 ) AS ODOMETRO_VEHICULO,
-                NI.PROYECTO_ACTUAL AS PROYECTO
+                NI.PROYECTO_ACTUAL AS PROYECTO,
+                NI.TORQUE_ACTUAL,
+                NI.PORCENTAJE_VIDA
             FROM ${BD_SCHEMA}.NEU_PADRON NP
             LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
                 ON NI.ID_NEUMATICO = NP.ID
@@ -371,9 +373,11 @@ const neumaticoService = {
 
         // Heredar valores si no se proporcionan nuevos
 
-        const odometroFinal = KILOMETRO || ultimoRegistro.ODOMETRO_VEHICULO || null;
-        const presionFinal = PRESION_AIRE || ultimoRegistro.PRESION_MEDIDA || null;
-        const remanenteFinal = REMANENTE || ultimoRegistro.REMANENTE_MEDIDO || null;
+        const odometroFinal = ultimoRegistro.ODOMETRO_VEHICULO || KILOMETRO || 0;
+        const presionFinal = ultimoRegistro.PRESION_MEDIDA || PRESION_AIRE || 0;
+        const remanenteFinal = ultimoRegistro.REMANENTE_MEDIDO || REMANENTE || 0;
+        const torqueFinal = ultimoRegistro.TORQUE_ACTUAL || 0
+        const porcentajeVidaFinal = ultimoRegistro.PORCENTAJE_VIDA || 0
         const kmRecorridoFinal = 0;
 
         // NOTA: La validación de posiciones vacías se hace en el controlador ANTES del loop
@@ -404,7 +408,10 @@ const neumaticoService = {
             usuario,
             kmRecorrido: kmRecorridoFinal, // <--- Heredar KM recorridos
             ID_OPERACION,
-            COD_SUPERVISOR
+            COD_SUPERVISOR,
+            nuevoPorcentaje: porcentajeVidaFinal,
+            torque: torqueFinal,
+            fecha_mantenimiento: resInsp[0].FECHA_SUCESO
         });
     },
 
