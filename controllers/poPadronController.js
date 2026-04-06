@@ -71,6 +71,13 @@ const cargarPadronDesdeExcel = async (req, res) => {
                 }
             } else erroresFila.push('Marca no especificada.');
 
+            let medida = columnas.MEDIDA ? (fila[columnas.MEDIDA] || '').trim().substring(0, 20) : null;
+            if (medida) {
+                const existeMedida = await db.query(`SELECT 1 FROM ${BD_SCHEMA}.NEU_MEDIDA WHERE MEDIDA = ?`, [medida]);
+                if (!existeMedida || existeMedida.length === 0) {
+                    erroresFila.push(`Medida inválida o mal escrita: '${medida}'.`);
+                }
+            } else erroresFila.push('Medida no especificada.');
 
             let diseno = columnas.DISENO ? (fila[columnas.DISENO] || '').trim() : null;
             if (diseno) {
@@ -102,6 +109,11 @@ const cargarPadronDesdeExcel = async (req, res) => {
                 if (marca) {
                     const resMarca = await db.query(`SELECT ID_MARCA FROM ${BD_SCHEMA}.NEU_MARCA WHERE UPPER(MARCA) = ?`, [marca.toUpperCase()]);
                     if (resMarca && resMarca.length > 0) idMarca = resMarca[0].ID_MARCA;
+                }
+                let idMedida = null;
+                if (medida) {
+                    const resMedida = await db.query(`SELECT ID_MEDIDA FROM ${BD_SCHEMA}.NEU_MEDIDA WHERE MEDIDA = ?`, [medida]);
+                    if (resMedida && resMedida.length > 0) idMedida = resMedida[0].ID_MEDIDA;
                 }
                 let idDiseno = null;
                 if (diseno) {
