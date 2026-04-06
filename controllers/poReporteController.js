@@ -1,15 +1,13 @@
 const db = require('../config/db');// Ajusta según tu conexión a la base de datos
+require('dotenv').config();
+const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 
 // Obtener cantidad de neumáticos disponibles por mes para un usuario
 exports.getDisponiblesPorMes = async (req, res) => {
     try {
         const usuario = String(req.query.usuario).trim(); // El usuario se pasa como query param y se limpia
         // Llamada al stored procedure
-        const result = await db.query('CALL SPEED400AT.SP_DISPONIBLES_POR_MES(?)', [usuario]);
-        // console.log('Usuario recibido:', usuario);
-        // console.log('Llamada al SP: CALL SPEED400AT.SP_DISPONIBLES_POR_MES(?)', usuario);
-        // console.log('Resultado SP:', result);
-        // Filtrar solo los objetos que contienen datos reales (FECHA y CANTIDAD)
+        const result = await db.query(`CALL ${BD_SCHEMA}.SP_DISPONIBLES_POR_MES(?)`, [usuario]);
         const data = Array.isArray(result)
             ? result.filter(r => r && r.FECHA && r.CANTIDAD !== undefined)
             : [];
@@ -24,7 +22,7 @@ exports.getDisponiblesPorMes = async (req, res) => {
 exports.getAsignadosPorMes = async (req, res) => {
     try {
         const usuario = String(req.query.usuario).trim();
-        const result = await db.query('CALL SPEED400AT.SP_ASIGNADOS_POR_MES(?)', [usuario]);
+        const result = await db.query(`CALL ${BD_SCHEMA}.SP_ASIGNADOS_POR_MES(?)`, [usuario]);
         const data = Array.isArray(result)
             ? result.filter(r => r && r.FECHA && r.CANTIDAD !== undefined)
             : [];
@@ -59,8 +57,8 @@ exports.getNeuInspeccionPorFechas = async (req, res) => {
                     NM.PORCENTAJE_VIDA AS ESTADO ,
                     USUARIO_REGISTRADOR AS USUARIO_SUPER
                 FROM
-                    SPEED400PI.NEU_MOVIMIENTOS NM
-                LEFT JOIN SPEED400PI.NEU_PADRON NP
+                    ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
+                LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
                     ON NP."ID" = NM.ID_NEUMATICO
                 WHERE
                     NM.ID_ACCION = 7 AND

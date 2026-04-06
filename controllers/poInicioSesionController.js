@@ -1,4 +1,6 @@
 const db = require('../config/db');
+require('dotenv').config();
+const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 
 const login = async (req, res) => {
     // Validar que se envíen usuario y password
@@ -9,7 +11,7 @@ const login = async (req, res) => {
     try {
         const users = await db.query(
             `SELECT CH_CODI_USUARIO, VC_DESC_NOMB_USUARIO, VC_DESC_APELL_PATERNO, VC_DESC_APELL_MATERNO, CH_PASS_USUA, CH_ESTA_ACTIVO
-             FROM SPEED400AT.MAE_USUARIO
+             FROM ${BD_SCHEMA}.MAE_USUARIO
              WHERE CH_CODI_USUARIO = ?`,
             [usuario]
         );
@@ -24,8 +26,8 @@ const login = async (req, res) => {
 
         const perfiles = await db.query(
             `SELECT P.CH_CODI_PERFIL, PF.VC_DESC_PERFIL
-             FROM SPEED400AT.MAE_PERFIL_MAE_USUARIO P
-             JOIN SPEED400AT.MAE_PERFIL PF ON P.CH_CODI_PERFIL = PF.CH_CODI_PERFIL
+             FROM ${BD_SCHEMA}.MAE_PERFIL_MAE_USUARIO P
+             JOIN ${BD_SCHEMA}.MAE_PERFIL PF ON P.CH_CODI_PERFIL = PF.CH_CODI_PERFIL
              WHERE P.CH_CODI_USUARIO = ? AND P.CH_ESTA_PERFIL_USUA = 'A' AND PF.CH_ESTA_PERFIL = 'A'`,
             [usuario]
         );

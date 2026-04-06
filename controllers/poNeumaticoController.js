@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const neumaticoService = require('../services/neumaticoService');
-
+require('dotenv').config();
+const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 // ============================================================================
 // LECTURA PRINCIPAL DEL PADRÓN (Usando Nuevo Servicio Normalizado)
 // ============================================================================
@@ -29,26 +30,7 @@ const getPoNeumaticos = getTodosNeumaticos;
 // FUNCIONES DE CONTEO (Refactorizadas a NEU_CABECERA)
 // ============================================================================
 const contarNeumaticos = async (req, res) => {
-    // if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
-    // try {
-    //     const usuario = req.session.user.usuario;
-    //     const perfiles = req.session.user.perfiles?.map(p => p.codigo) || [];
 
-    //     let query = 'SELECT COUNT(*) AS cantidad FROM SPEED400AT.NEU_CABECERA';
-    //     let params = [];
-    //     if (!perfiles.includes('005')) {
-    //         query += ' WHERE SUPERVISOR_ACTUAL = ?';
-    //         params.push(usuario);
-    //     }
-
-    //     const result = await db.query(query, params);
-    //     // DB2 fix: Check lowercase or uppercase column name
-    //     const valor = result && result[0] ? (result[0].cantidad || result[0].CANTIDAD || 0) : 0;
-    //     res.json({ cantidad: valor });
-    // } catch (error) {
-    //     console.error('Error al contar neumáticos:', error);
-    //     res.status(500).json({ error: 'Error al contar neumáticos' });
-    // }
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
     try {
         const usuario = req.session.user.usuario;
@@ -57,12 +39,12 @@ const contarNeumaticos = async (req, res) => {
         let query = `
                 SELECT
                     COUNT(*) cantidad
-                FROM SPEED400AT.MAE_TALLER_X_USUARIO u
-                    INNER JOIN SPEED400AT.PO_TALLER t
+                FROM ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+                    INNER JOIN ${BD_SCHEMA}.PO_TALLER t
                         ON u.ID_TALLER = t.ID
-                    INNER JOIN SPEED400PI.NEU_INFORMACION i
+                    INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION i
                         ON t.DESCRIPCION = i.PROYECTO_ACTUAL
-                    INNER JOIN SPEED400PI.NEU_PADRON p
+                    INNER JOIN ${BD_SCHEMA}.NEU_PADRON p
                         ON  i.ID_NEUMATICO = p.ID`
         let params = [];
         // if (!perfiles.includes('005')) {
@@ -91,12 +73,12 @@ const contarNeumaticosBajaDefinitiva = async (req, res) => {
         let query = `
                     SELECT
                         COUNT(*) AS cantidad
-                    FROM SPEED400AT.MAE_TALLER_X_USUARIO u
-                        INNER JOIN SPEED400AT.PO_TALLER t
+                    FROM ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+                        INNER JOIN ${BD_SCHEMA}.PO_TALLER t
                             ON u.ID_TALLER = t.ID
-                        INNER JOIN SPEED400PI.NEU_INFORMACION i
+                        INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION i
                             ON t.DESCRIPCION = i.PROYECTO_ACTUAL
-                        INNER JOIN SPEED400PI.NEU_PADRON p
+                        INNER JOIN ${BD_SCHEMA}.NEU_PADRON p
                             ON i.ID_NEUMATICO = p.ID
                     WHERE i.ID_ESTADO = 3`
 
@@ -121,28 +103,16 @@ const contarNeumaticoRecuperados = async (req, res) => {
         const usuario = req.session.user.usuario;
         const perfiles = req.session.user.perfiles?.map(p => p.codigo) || [];
 
-        // let query = `
-        //             SELECT
-        //                 COUNT(*) AS cantidad
-        //             FROM SPEED400AT.MAE_TALLER_X_USUARIO u
-        //                 INNER JOIN SPEED400AT.PO_TALLER t
-        //                     ON u.ID_TALLER = t.ID
-        //                 INNER JOIN SPEED400PI.NEU_INFORMACION i
-        //                     ON t.DESCRIPCION = i.PROYECTO_ACTUAL
-        //                 INNER JOIN SPEED400PI.NEU_PADRON p
-        //                     ON i.ID_NEUMATICO = p.ID
-        //             WHERE i.ID_ESTADO = 4`
-
         let query = `
             SELECT
                 COUNT(*) AS cantidad
-            FROM SPEED400AT.MAE_TALLER_X_USUARIO u
-                INNER JOIN SPEED400AT.PO_TALLER t
+            FROM ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+                INNER JOIN ${BD_SCHEMA}.PO_TALLER t
                     ON u.ID_TALLER = t.ID
-                INNER JOIN SPEED400PI.NEU_INFORMACION i
+                INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION i
                     ON t.DESCRIPCION = i.PROYECTO_ACTUAL
                     AND i.ES_RECUPERADO = TRUE
-                INNER JOIN SPEED400PI.NEU_PADRON p
+                INNER JOIN ${BD_SCHEMA}.NEU_PADRON p
                     ON i.ID_NEUMATICO = p.ID`;
 
         let params = [];
@@ -179,7 +149,7 @@ const eliminarNeumatico = async (req, res) => {
 
 const contarProyectosNeumatico = async (req, res) => {
     try {
-        const result = await db.query('SELECT COUNT(DISTINCT PROYECTO) AS cantidad FROM SPEED400AT.NEU_CABECERA');
+        const result = await db.query(`SELECT COUNT(DISTINCT PROYECTO) AS cantidad FROM ${BD_SCHEMA}.NEU_CABECERA`);
         const valor = result && result[0] ? (result[0].cantidad || result[0].CANTIDAD || 0) : 0;
         res.json({ cantidad: valor });
     } catch (error) {
@@ -199,12 +169,12 @@ const contarNeumaticosAsignados = async (req, res) => {
         let query = `
                     SELECT
                         COUNT(*) AS cantidad
-                    FROM SPEED400AT.MAE_TALLER_X_USUARIO u
-                        INNER JOIN SPEED400AT.PO_TALLER t
+                    FROM ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+                        INNER JOIN ${BD_SCHEMA}.PO_TALLER t
                             ON u.ID_TALLER = t.ID
-                        INNER JOIN SPEED400PI.NEU_INFORMACION i
+                        INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION i
                             ON t.DESCRIPCION = i.PROYECTO_ACTUAL
-                        INNER JOIN SPEED400PI.NEU_PADRON p
+                        INNER JOIN ${BD_SCHEMA}.NEU_PADRON p
                             ON i.ID_NEUMATICO = p.ID
                     WHERE i.ID_ESTADO = 2`
 
@@ -231,12 +201,12 @@ const costoNeumaticosAsignados = async (req, res) => {
 
         let query = `SELECT
                     SUM(p.COSTO_INICIAL) AS costo_total
-                FROM SPEED400AT.MAE_TALLER_X_USUARIO u
-                    INNER JOIN SPEED400AT.PO_TALLER t
+                FROM ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+                    INNER JOIN ${BD_SCHEMA}.PO_TALLER t
                         ON u.ID_TALLER = t.ID
-                    INNER JOIN SPEED400PI.NEU_INFORMACION i
+                    INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION i
                         ON t.DESCRIPCION = i.PROYECTO_ACTUAL
-                    INNER JOIN SPEED400PI.NEU_PADRON p
+                    INNER JOIN ${BD_SCHEMA}.NEU_PADRON p
                         ON i.ID_NEUMATICO = p.ID
                 WHERE i.ID_ESTADO = 2`
 
@@ -263,12 +233,12 @@ const contarNeumaticosDisponibles = async (req, res) => {
         let query = `
                     SELECT
                         COUNT(*) AS cantidad
-                    FROM SPEED400AT.MAE_TALLER_X_USUARIO u
-                        INNER JOIN SPEED400AT.PO_TALLER t
+                    FROM ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+                        INNER JOIN ${BD_SCHEMA}.PO_TALLER t
                             ON u.ID_TALLER = t.ID
-                        INNER JOIN SPEED400PI.NEU_INFORMACION i
+                        INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION i
                             ON t.DESCRIPCION = i.PROYECTO_ACTUAL
-                        INNER JOIN SPEED400PI.NEU_PADRON p
+                        INNER JOIN ${BD_SCHEMA}.NEU_PADRON p
                             ON i.ID_NEUMATICO = p.ID
                     WHERE i.ID_ESTADO = 1`
 
@@ -300,10 +270,10 @@ const neumaticosRecuperados = async (req, res) => {
                 CAST(NI.ES_RECUPERADO AS SMALLINT) AS RECUPERADO,
                 NE.CODIGO_INTERNO,
                 NI.PORCENTAJE_VIDA
-            FROM SPEED400PI.NEU_INFORMACION NI
-            LEFT JOIN SPEED400AT.NEU_ESTADO NE
+            FROM ${BD_SCHEMA}.NEU_INFORMACION NI
+            LEFT JOIN ${BD_SCHEMA}.NEU_ESTADO NE
                 ON NE.ID_ESTADO = NI.ID_ESTADO
-            LEFT JOIN SPEED400PI.NEU_PADRON NP
+            LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
                 ON NI.ID_NEUMATICO = NP.ID
             WHERE NI.PROYECTO_ACTUAL = ?
             AND ((NI.ID_ESTADO = 1 AND NI.ES_RECUPERADO = TRUE)
@@ -330,7 +300,7 @@ const proyectos = async (req, res) => {
             SELECT
                 ID,
                 DESCRIPCION
-            FROM SPEED400PI.PO_TALLER
+            FROM ${BD_SCHEMA}.PO_TALLER
             ORDER BY DESCRIPCION ASC
             `
 
@@ -354,7 +324,7 @@ const reubicarNeumaticosPorProyecto = async (req, res) => {
             // 1. Insertar la reubicacion
 
             const sqlHTRASLADOS = `
-                INSERT INTO SPEED400PI.NEU_HTRASLADOS(
+                INSERT INTO ${BD_SCHEMA}.NEU_HTRASLADOS(
                     ID_NEUMATICO, PROYECTO_ORIGEN, PROYECTO_DESTINO, USUARIO_REGISTRADOR
                 ) VALUES (?, ?, ?, ?)
             `;
@@ -366,7 +336,7 @@ const reubicarNeumaticosPorProyecto = async (req, res) => {
             // 2. Actualizar la ni_informacion
 
             const sqlNINFORMACION = `
-                UPDATE SPEED400PI.NEU_INFORMACION
+                UPDATE ${BD_SCHEMA}.NEU_INFORMACION
                 SET PROYECTO_ACTUAL = ?
                 WHERE ID_NEUMATICO = ?
             `;

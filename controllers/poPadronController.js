@@ -1,5 +1,7 @@
 const db = require("../config/db");
 const xlsx = require("xlsx");
+require('dotenv').config();
+const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 
 const cargarPadronDesdeExcel = async (req, res) => {
     try {
@@ -55,7 +57,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
 
             let codigo = columnas.CODIGO ? (fila[columnas.CODIGO] || '').toString().trim() : null;
             if (codigo) {
-                const existe = await db.query('SELECT 1 FROM SPEED400PI.NEU_PADRON WHERE CODIGO = ?', [codigo]);
+                const existe = await db.query(`SELECT 1 FROM ${BD_SCHEMA}.NEU_PADRON WHERE CODIGO = ?`, [codigo]);
                 if (existe && existe.length > 0) {
                     erroresFila.push('Código duplicado: ya existe en la base de datos.');
                 }
@@ -63,23 +65,16 @@ const cargarPadronDesdeExcel = async (req, res) => {
 
             let marca = columnas.MARCA ? (fila[columnas.MARCA] || '').trim() : null;
             if (marca) {
-                const existeMarca = await db.query('SELECT 1 FROM SPEED400AT.NEU_MARCA WHERE UPPER(MARCA) = ?', [marca.toUpperCase()]);
+                const existeMarca = await db.query(`SELECT 1 FROM ${BD_SCHEMA}.NEU_MARCA WHERE UPPER(MARCA) = ?`, [marca.toUpperCase()]);
                 if (!existeMarca || existeMarca.length === 0) {
                     erroresFila.push(`Marca inválida o mal escrita: '${marca}'.`);
                 }
             } else erroresFila.push('Marca no especificada.');
 
-            // let medida = columnas.MEDIDA ? (fila[columnas.MEDIDA] || '').trim().substring(0, 20) : null;
-            // if (medida) {
-            //     const existeMedida = await db.query('SELECT 1 FROM SPEED400AT.NEU_MEDIDA WHERE MEDIDA = ?', [medida]);
-            //     if (!existeMedida || existeMedida.length === 0) {
-            //         erroresFila.push(`Medida inválida o mal escrita: '${medida}'.`);
-            //     }
-            // } else erroresFila.push('Medida no especificada.');
 
             let diseno = columnas.DISENO ? (fila[columnas.DISENO] || '').trim() : null;
             if (diseno) {
-                const existeDiseno = await db.query('SELECT 1 FROM SPEED400AT.NEU_DISENO WHERE DISENO = ?', [diseno]);
+                const existeDiseno = await db.query(`SELECT 1 FROM ${BD_SCHEMA}.NEU_DISENO WHERE DISENO = ?`, [diseno]);
                 if (!existeDiseno || existeDiseno.length === 0) {
                     erroresFila.push(`Diseño inválido o mal escrito: '${diseno}'.`);
                 }
@@ -88,7 +83,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
             let rucProveedor = null;
             let proveedorCodigo = columnas.PROVEEDOR ? (fila[columnas.PROVEEDOR] || '').trim() : null;
             if (proveedorCodigo) {
-                const resProveedor = await db.query('SELECT PRONOM, PRORUC FROM SPEED400AT.TPROV WHERE PRORUC = ?', [proveedorCodigo]);
+                const resProveedor = await db.query(`SELECT PRONOM, PRORUC FROM ${BD_SCHEMA}.TPROV WHERE PRORUC = ?`, [proveedorCodigo]);
                 if (resProveedor && resProveedor.length > 0) {
                     rucProveedor = resProveedor[0].PRORUC;
                 } else {
@@ -105,17 +100,12 @@ const cargarPadronDesdeExcel = async (req, res) => {
 
                 let idMarca = null;
                 if (marca) {
-                    const resMarca = await db.query('SELECT ID_MARCA FROM SPEED400AT.NEU_MARCA WHERE UPPER(MARCA) = ?', [marca.toUpperCase()]);
+                    const resMarca = await db.query(`SELECT ID_MARCA FROM ${BD_SCHEMA}.NEU_MARCA WHERE UPPER(MARCA) = ?`, [marca.toUpperCase()]);
                     if (resMarca && resMarca.length > 0) idMarca = resMarca[0].ID_MARCA;
                 }
-                // let idMedida = null;
-                // if (medida) {
-                //     const resMedida = await db.query('SELECT ID_MEDIDA FROM SPEED400AT.NEU_MEDIDA WHERE MEDIDA = ?', [medida]);
-                //     if (resMedida && resMedida.length > 0) idMedida = resMedida[0].ID_MEDIDA;
-                // }
                 let idDiseno = null;
                 if (diseno) {
-                    const resDiseno = await db.query('SELECT ID_DISENO FROM SPEED400AT.NEU_DISENO WHERE DISENO = ?', [diseno]);
+                    const resDiseno = await db.query(`SELECT ID_DISENO FROM ${BD_SCHEMA}.NEU_DISENO WHERE DISENO = ?`, [diseno]);
                     if (resDiseno && resDiseno.length > 0) idDiseno = resDiseno[0].ID_DISENO;
                 }
 
@@ -177,7 +167,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
 
                 // INSERT - NEUMATICO
 
-                const query = `INSERT INTO SPEED400PI.NEU_PADRON (CODIGO, ID_MARCA, MEDIDA, DISENO, PR, CARGA, VELOCIDAD, FECHA_FABRICACION_COD, REMANENTE_INICIAL, FECHA_COMPRA, COSTO_INICIAL, ID_PROVEEDOR, RQ, OC, PROYECTO, FECHA_ENVIO) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                const query = `INSERT INTO ${BD_SCHEMA}.NEU_PADRON (CODIGO, ID_MARCA, MEDIDA, DISENO, PR, CARGA, VELOCIDAD, FECHA_FABRICACION_COD, REMANENTE_INICIAL, FECHA_COMPRA, COSTO_INICIAL, ID_PROVEEDOR, RQ, OC, PROYECTO, FECHA_ENVIO) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
                 const params = [
                     filaLimpia.CODIGO, filaLimpia.ID_MARCA, filaLimpia.MEDIDA, filaLimpia.DISENO,
@@ -189,7 +179,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
                 await db.query(query, params);
 
                 const resultId = await db.query(
-                    'SELECT ID FROM SPEED400PI.NEU_PADRON WHERE CODIGO = ?',
+                    `SELECT ID FROM ${BD_SCHEMA}.NEU_PADRON WHERE CODIGO = ?`,
                     [filaLimpia.CODIGO]
                 );
 
@@ -198,7 +188,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
 
                 // INSERT - INFORMACIÓN DEL NEUMATICO
 
-                const queryInformation = `INSERT INTO SPEED400PI.NEU_INFORMACION (ID_NEUMATICO, ID_ESTADO, PLACA_ACTUAL, POSICION_ACTUAL, PROYECTO_ACTUAL, REMANENTE_ACTUAL, PRESION_ACTUAL, TORQUE_ACTUAL, PORCENTAJE_VIDA, ODOMETRO_AL_MONTAR, KM_TOTAL_VIDA) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                const queryInformation = `INSERT INTO ${BD_SCHEMA}.NEU_INFORMACION (ID_NEUMATICO, ID_ESTADO, PLACA_ACTUAL, POSICION_ACTUAL, PROYECTO_ACTUAL, REMANENTE_ACTUAL, PRESION_ACTUAL, TORQUE_ACTUAL, PORCENTAJE_VIDA, ODOMETRO_AL_MONTAR, KM_TOTAL_VIDA) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
                 const paramsInformation = [
                     idNeumatico,

@@ -1,4 +1,7 @@
 const db = require("../config/db");
+require('dotenv').config();
+const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
+
 
 // Función utilitaria para formatear fechas (YYYY-MM-DD)
 function formatDate(dateStr) {
@@ -29,23 +32,9 @@ const registrarReubicacionNeumatico = async (req, res) => {
         if (datosArray.length > 0) {
             const placa = datosArray[0].PLACA;
 
-            // 1. Obtener posiciones actuales del vehículo
-            // const sqlPosicionesActuales = `
-            //     SELECT POSICION_ACTUAL, COUNT(*) as TOTAL
-            //     FROM SPEED400AT.NEU_CABECERA
-            //     WHERE PLACA_ACTUAL = ?
-            //       AND POSICION_ACTUAL IS NOT NULL
-            //       AND POSICION_ACTUAL != ''
-            //       AND ID_ESTADO IN (
-            //           SELECT ID_ESTADO FROM SPEED400AT.NEU_ESTADO 
-            //           WHERE CODIGO_INTERNO = 'ASIGNADO'
-            //       )
-            //     GROUP BY POSICION_ACTUAL
-            // `;
-
             const sqlPosicionesActuales = `
                 SELECT NI.POSICION_ACTUAL, COUNT(*) AS TOTAL
-                    FROM SPEED400PI.NEU_INFORMACION AS NI
+                    FROM ${BD_SCHEMA}.NEU_INFORMACION AS NI
                 WHERE POSICION_ACTUAL IS NOT NULL
                 AND NI.PLACA_ACTUAL = ? AND NI.ID_ESTADO = 2
                 GROUP BY NI.POSICION_ACTUAL
@@ -131,7 +120,7 @@ const registrarDesasignacionNeumatico = async (req, res) => {
             // Obtener la placa del primer neumático (asumimos que todos son del mismo vehículo)
             const sqlGetPlaca = `
                 SELECT PLACA_ACTUAL 
-                FROM SPEED400AT.NEU_CABECERA 
+                FROM ${BD_SCHEMA}.NEU_CABECERA 
                 WHERE CODIGO_CASCO = ?
             `;
             const resPlaca = await db.query(sqlGetPlaca, [datosArray[0].CODIGO]);
@@ -141,12 +130,12 @@ const registrarDesasignacionNeumatico = async (req, res) => {
                 // 1. Obtener posiciones actuales del vehículo
                 const sqlPosicionesActuales = `
                     SELECT POSICION_ACTUAL, COUNT(*) as TOTAL
-                    FROM SPEED400AT.NEU_CABECERA
+                    FROM ${BD_SCHEMA}.NEU_CABECERA
                     WHERE PLACA_ACTUAL = ?
                       AND POSICION_ACTUAL IS NOT NULL
                       AND POSICION_ACTUAL != ''
                       AND ID_ESTADO IN (
-                          SELECT ID_ESTADO FROM SPEED400AT.NEU_ESTADO 
+                          SELECT ID_ESTADO FROM ${BD_SCHEMA}.NEU_ESTADO 
                           WHERE CODIGO_INTERNO = 'ASIGNADO'
                       )
                     GROUP BY POSICION_ACTUAL
@@ -164,7 +153,7 @@ const registrarDesasignacionNeumatico = async (req, res) => {
                     // Obtener posición del neumático a desasignar
                     const sqlGetPosicion = `
                         SELECT POSICION_ACTUAL 
-                        FROM SPEED400AT.NEU_CABECERA 
+                        FROM ${BD_SCHEMA}.NEU_CABECERA 
                         WHERE CODIGO_CASCO = ?
                     `;
                     const resPosicion = await db.query(sqlGetPosicion, [datos.CODIGO]);
@@ -232,7 +221,7 @@ const getUltimaFechaInspeccion = async (req, res) => {
         // REFACTORIZADO: Busca en NEU_DETALLE
         const query = `
             SELECT FECHA_SUCESO AS FECHA_REGISTRO
-            FROM SPEED400AT.NEU_DETALLE
+            FROM ${BD_SCHEMA}.NEU_DETALLE
             WHERE CODIGO_CASCO = ? AND PLACA = ?
               AND UPPER(TIPO_ACCION) = 'INSPECCION'
             ORDER BY FECHA_SUCESO DESC
@@ -258,7 +247,7 @@ const getUltimaFechaInspeccionPorPlaca = async (req, res) => {
             SELECT 
                 FECHA_INSPECCION AS FECHA_REGISTRO,
                 FECHA_ASIGNACION
-            FROM SPEED400PI.NEU_VKILOMETRAJE
+            FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE
             WHERE PLACA = ?
             ORDER BY ID DESC
             FETCH FIRST 1 ROW ONLY`;
@@ -287,7 +276,7 @@ const getFechasInspeccionVehicularPorPlaca = async (req, res) => {
             SELECT
                 FECHA_INSPECCION AS FECHA_REGISTRO,
                 FECHA_ASIGNACION
-            FROM SPEED400PI.NEU_VKILOMETRAJE
+            FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE
             WHERE PLACA = ?
             AND FECHA_INSPECCION IS NOT NULL
             ORDER BY ID DESC`;
@@ -310,7 +299,7 @@ const getInspeccionesPorPlaca = async (req, res) => {
         const query = `
             SELECT
                 NV.ID, NV.PLACA, NV.KILOMETRAJE, NV.FECHA_INSPECCION, DATE(NV.FECHA_TIEMPO) AS FECHA_TIEMPO, NV.TIPO_TERRENO, NV.RETEN
-            FROM SPEED400PI.NEU_VKILOMETRAJE NV
+            FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE NV
             WHERE NV.PLACA = ?
             AND FECHA_INSPECCION IS NOT NULL
             ORDER BY ID DESC`;
@@ -347,8 +336,8 @@ const getNeumaticosPorInspeccion = async (req, res) => {
                 NM.KM_RECORRIDOS_ETAPA AS KM_RECORRIDO,
                 NM.OBS,
                 NM.PORCENTAJE_VIDA
-            FROM SPEED400PI.NEU_MOVIMIENTOS NM
-            LEFT JOIN SPEED400PI.NEU_PADRON NP
+            FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
+            LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
                 ON NP."ID" = NM.ID_NEUMATICO
             WHERE NM.PLACA = ?
             AND NM.FECHA_INSPECCION = ?
@@ -392,8 +381,8 @@ const desasignarConReemplazo = async (req, res) => {
 
             const sqlGetPlaca = `
             SELECT PLACA_ACTUAL
-            FROM SPEED400PI.NEU_INFORMACION NI
-            LEFT JOIN SPEED400PI.NEU_PADRON NP
+            FROM ${BD_SCHEMA}.NEU_INFORMACION NI
+            LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
                 ON NP.ID = NI.ID_NEUMATICO
             WHERE NP.CODIGO = ?`;
 
@@ -404,7 +393,7 @@ const desasignarConReemplazo = async (req, res) => {
 
                 let sqlPosicionesActuales =
                     `SELECT NI.POSICION_ACTUAL, COUNT(*) AS TOTAL
-                            FROM SPEED400PI.NEU_INFORMACION AS NI
+                            FROM ${BD_SCHEMA}.NEU_INFORMACION AS NI
                     WHERE POSICION_ACTUAL IS NOT NULL
                     AND NI.PLACA_ACTUAL = ? AND NI.ID_ESTADO = 2
                     GROUP BY NI.POSICION_ACTUAL
@@ -428,8 +417,8 @@ const desasignarConReemplazo = async (req, res) => {
 
                     const sqlGetPosicion = `
                     SELECT POSICION_ACTUAL
-                    FROM SPEED400PI.NEU_INFORMACION NI
-                    LEFT JOIN SPEED400PI.NEU_PADRON NP
+                    FROM ${BD_SCHEMA}.NEU_INFORMACION NI
+                    LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
                         ON NP."ID" = NI.ID_NEUMATICO
                     WHERE NP.CODIGO = ?`;
 
@@ -473,8 +462,8 @@ const desasignarConReemplazo = async (req, res) => {
                     `SELECT
                         NP.CODIGO,
                         NI.QTY_RECUPERADO
-                    FROM SPEED400PI.NEU_INFORMACION NI
-                    LEFT JOIN SPEED400PI.NEU_PADRON NP
+                    FROM ${BD_SCHEMA}.NEU_INFORMACION NI
+                    LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
                         ON NP."ID" = NI.ID_NEUMATICO
                     WHERE NP.CODIGO = ?`;
 

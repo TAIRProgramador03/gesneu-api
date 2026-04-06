@@ -1,4 +1,6 @@
 const db = require("../config/db");
+require('dotenv').config();
+const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 
 const listarNeumaticosDisponibles = async (req, res) => {
   try {
@@ -28,28 +30,28 @@ const listarNeumaticosDisponibles = async (req, res) => {
                     CAST(ni.ES_RECUPERADO AS SMALLINT) AS RECUPERADO,
                     (
                       SELECT NM.FECHA_RECUPERADO
-                        FROM SPEED400PI.NEU_MOVIMIENTOS NM
+                        FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
                         WHERE NM.ID_NEUMATICO = NP.ID
                         ORDER BY NM.ID DESC
                       FETCH FIRST 1 ROW ONLY
                     ) AS FECHA_RECUPERADO 
-                FROM SPEED400PI.NEU_PADRON np
-                LEFT JOIN SPEED400PI.NEU_INFORMACION ni
+                FROM ${BD_SCHEMA}.NEU_PADRON np
+                LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
                     ON ni.ID_NEUMATICO = np.ID`
 
     if (type === 'desasignacion') query += ` AND (ni.ID_ESTADO = 1 OR ni.ID_ESTADO = 3)`
     else query += ` AND ni.ID_ESTADO = 1`
 
     query += ` 
-                LEFT JOIN SPEED400AT.NEU_ESTADO ne
+                LEFT JOIN ${BD_SCHEMA}.NEU_ESTADO ne
                     ON ne.ID_ESTADO = ni.ID_ESTADO
-                LEFT JOIN SPEED400AT.NEU_MARCA nm
+                LEFT JOIN ${BD_SCHEMA}.NEU_MARCA nm
                     ON nm.ID_MARCA = np.ID_MARCA
-                LEFT JOIN SPEED400AT.TPROV prov
+                LEFT JOIN ${BD_SCHEMA}.TPROV prov
                     ON prov.PRORUC = np.ID_PROVEEDOR
-                INNER JOIN SPEED400AT.MAE_TALLER_X_USUARIO u
+                INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
                     ON TRIM(u.CH_CODI_USUARIO) = (?)
-                INNER JOIN SPEED400AT.PO_TALLER t
+                INNER JOIN ${BD_SCHEMA}.PO_TALLER t
                     ON u.ID_TALLER = t.ID
                     AND t.DESCRIPCION = ni.PROYECTO_ACTUAL`;
 

@@ -1,9 +1,11 @@
 const db = require('../config/db');
+require('dotenv').config();
+const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 const PoSupervisores = require('../models/PoSupervisor');
 
 exports.getSupervisores = async (req, res) => {
     try {
-        const result = await db.query("SELECT * FROM SPEED400AT.PO_SUPERVISORES");
+        const result = await db.query(`SELECT * FROM ${BD_SCHEMA}.PO_SUPERVISORES`);
         const supervisores = result.map(row => new PoSupervisores(row));
         res.json(supervisores);
     } catch (err) {

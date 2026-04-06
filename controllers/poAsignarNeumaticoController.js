@@ -1,4 +1,6 @@
 const db = require("../config/db");
+require('dotenv').config();
+const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 
 const asignarNeumatico = async (req, res) => {
     // Validar sesión y usuario autenticado
@@ -50,7 +52,7 @@ const asignarNeumatico = async (req, res) => {
             // Validar que la fecha de asignación no sea anterior a la fecha de registro del neumático
             const sqlFechaRegistro =
                 `SELECT FECHA_ENVIO AS FECHA_REGISTRO
-                    FROM SPEED400PI.NEU_PADRON
+                    FROM ${BD_SCHEMA}.NEU_PADRON
                 WHERE CODIGO = ?`;
             const resultFecha = await db.query(sqlFechaRegistro, [CodigoNeumatico]);
 
@@ -92,7 +94,7 @@ const asignarNeumatico = async (req, res) => {
     // actualizar el kilometraje al vehiculo
 
     const sqlVKilometraje = `
-            INSERT INTO SPEED400PI.NEU_VKILOMETRAJE
+            INSERT INTO ${BD_SCHEMA}.NEU_VKILOMETRAJE
             (PLACA, KILOMETRAJE, FECHA_ASIGNACION)
                 VALUES
             (?, ?, ?)`;

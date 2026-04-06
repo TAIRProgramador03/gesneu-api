@@ -1,4 +1,7 @@
 const db = require("../config/db");
+require('dotenv').config();
+const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
+
 
 // Funciones para formatear fechas y timestamps
 function formatDate(dateStr) {
@@ -83,7 +86,7 @@ const crearInspeccion = async (req, res) => {
         const sqlGetVehiLast = `    
             SELECT 
                 FECHA_ASIGNACION
-            FROM SPEED400PI.NEU_VKILOMETRAJE
+            FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE
             WHERE PLACA = ?
             ORDER BY ID DESC
             FETCH FIRST 1 ROW ONLY
@@ -92,7 +95,7 @@ const crearInspeccion = async (req, res) => {
         const lastVehiculo = resultVehiLast[0]
 
         sqlInsertVehi = `
-            INSERT INTO SPEED400PI.NEU_VKILOMETRAJE
+            INSERT INTO ${BD_SCHEMA}.NEU_VKILOMETRAJE
                 (PLACA, KILOMETRAJE, FECHA_ASIGNACION, FECHA_INSPECCION, TIPO_TERRENO, RETEN)
             VALUES (?, ?, ?, ?, ?, ?)`;
         await db.query(sqlInsertVehi, [placa, kilometraje, lastVehiculo.FECHA_ASIGNACION ?? '2004-05-30', fecha_inspeccion, tipo_terreno, reten]);
@@ -118,7 +121,7 @@ const existeInspeccionHoy = async (req, res) => {
             SELECT
                 FECHA_INSPECCION AS FECHA_REGISTRO,
                 FECHA_ASIGNACION
-            FROM SPEED400PI.NEU_VKILOMETRAJE
+            FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE
             WHERE PLACA = ?
             AND DATE(FECHA_INSPECCION) = ?
             ORDER BY ID DESC
@@ -134,7 +137,7 @@ const existeInspeccionHoy = async (req, res) => {
                 SELECT
                     FECHA_INSPECCION AS FECHA_REGISTRO,
                     FECHA_ASIGNACION
-                FROM SPEED400PI.NEU_VKILOMETRAJE
+                FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE
                 WHERE PLACA = ?
                 ORDER BY ID DESC
                 FETCH FIRST 1 ROW ONLY`;

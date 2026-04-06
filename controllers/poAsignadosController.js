@@ -1,4 +1,7 @@
 const db = require("../config/db");
+require('dotenv').config();
+
+const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 
 const listarNeumaticosAsignados = async (req, res) => {
     try {
@@ -9,72 +12,6 @@ const listarNeumaticosAsignados = async (req, res) => {
         }
 
         const placaTrim = placa.trim();
-
-        // let query = `
-        //         SELECT
-        //             np."ID" AS ID,
-        //             np.FECHA_REGISTRO AS FECHA_REGISTRO,
-        //             ni.PLACA_ACTUAL AS PLACA,
-        //             ni.POSICION_ACTUAL AS POSICION_NEU,
-        //             np.CODIGO AS CODIGO_NEU,
-        //             nm.MARCA AS MARCA,
-        //             np.MEDIDA,
-        //             ni.REMANENTE_ACTUAL AS REMANENTE,
-        //             np.REMANENTE_INICIAL AS REMANENTE_ORIGINAL,
-        //             ni.PORCENTAJE_VIDA AS ESTADO,
-        //             ne.DESCRIPCION AS TIPO_MOVIMIENTO,
-        //             ni.FECHA_ULTIMA_ASIGNACION AS FECHA_ASIGNADO,
-        //             ni.FECHA_ULTIMA_ACTUALIZACION AS FECHA_ULTIMO_SUCESO,
-        //             ni.KM_TOTAL_VIDA,   
-        //             ni.ODOMETRO_AL_MONTAR AS ODOMETRO,
-        //             ni.PRESION_ACTUAL AS PRESION_AIRE,
-        //             ni.TORQUE_ACTUAL  AS TORQUE_APLICADO
-        //         FROM SPEED400PI.NEU_PADRON np
-        //         LEFT JOIN SPEED400AT.NEU_MARCA nm
-        //             ON nm.ID_MARCA = np.ID_MARCA
-        //         INNER JOIN SPEED400PI.NEU_INFORMACION ni
-        //             ON ni.ID_NEUMATICO = np."ID"
-        //         INNER JOIN SPEED400AT.NEU_ESTADO ne
-        //             ON ne.ID_ESTADO = ni.ID_ESTADO
-        //         WHERE ni.PLACA_ACTUAL = ? AND ni.ID_ESTADO = 2`
-
-        // let query = `
-        //     SELECT
-        //         np."ID" AS ID,
-        //         np.FECHA_REGISTRO AS FECHA_REGISTRO,
-        //         ni.PLACA_ACTUAL AS PLACA,
-        //         ni.POSICION_ACTUAL AS POSICION_NEU,
-        //         np.CODIGO AS CODIGO_NEU,
-        //         nm.MARCA AS MARCA,
-        //         np.MEDIDA,
-        //         ni.REMANENTE_ACTUAL AS REMANENTE,
-        //         np.REMANENTE_INICIAL AS REMANENTE_ORIGINAL,
-        //         ni.PORCENTAJE_VIDA AS ESTADO,
-        //         ne.DESCRIPCION AS TIPO_MOVIMIENTO,
-        //         ni.FECHA_ULTIMA_ASIGNACION AS FECHA_ASIGNADO,
-        //         ni.FECHA_ULTIMA_ACTUALIZACION AS FECHA_ULTIMO_SUCESO,
-        //         (SELECT COALESCE(SUM(nmo.KM_RECORRIDOS_ETAPA), 0)
-        //             FROM SPEED400PI.NEU_MOVIMIENTOS nmo
-        //             WHERE nmo.ID_NEUMATICO = np."ID"
-        //             AND nmo.PLACA = ni.PLACA_ACTUAL
-        //         ) AS KM_TOTAL_VIDA,
-        //         (SELECT nmo.ODOMETRO_VEHICULO
-        //             FROM SPEED400PI.NEU_MOVIMIENTOS nmo
-        //             WHERE nmo.ID_NEUMATICO = np."ID"
-        //             AND nmo.PLACA = ni.PLACA_ACTUAL
-        //             ORDER BY nmo.ID DESC
-        //             FETCH FIRST 1 ROW ONLY
-        //         ) AS ODOMETRO,
-        //         ni.PRESION_ACTUAL AS PRESION_AIRE,
-        //         ni.TORQUE_ACTUAL AS TORQUE_APLICADO
-        //     FROM SPEED400PI.NEU_PADRON np
-        //     LEFT JOIN SPEED400AT.NEU_MARCA nm
-        //         ON nm.ID_MARCA = np.ID_MARCA
-        //     INNER JOIN SPEED400PI.NEU_INFORMACION ni
-        //         ON ni.ID_NEUMATICO = np."ID"
-        //     INNER JOIN SPEED400AT.NEU_ESTADO ne
-        //         ON ne.ID_ESTADO = ni.ID_ESTADO
-        //     WHERE ni.PLACA_ACTUAL = ? AND ni.ID_ESTADO = 2`;
 
         let query = `
             SELECT
@@ -91,31 +28,31 @@ const listarNeumaticosAsignados = async (req, res) => {
                 ne.DESCRIPCION AS TIPO_MOVIMIENTO,
                 CAST(ni.ES_RECUPERADO AS SMALLINT) AS RECUPERADO,
                 (SELECT NM.FECHA_ASIGNACION
-                    FROM SPEED400PI.NEU_MOVIMIENTOS NM
+                    FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
                     WHERE NI.PLACA_ACTUAL = NM.PLACA AND NM.ID_ACCION = 2 AND np.ID = NM.ID_NEUMATICO
                     ORDER BY NM.ID ASC
                     FETCH FIRST 1 ROW ONLY  
                 ) AS FECHA_ASIGNACION,
                 DATE(np.FECHA_REGISTRO) AS FECHA_ULTIMO_SUCESO,
                 (SELECT COALESCE(SUM(nmo.KM_RECORRIDOS_ETAPA), 0)
-                    FROM SPEED400PI.NEU_MOVIMIENTOS nmo
+                    FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS nmo
                     WHERE nmo.ID_NEUMATICO = np."ID"
                     AND nmo.PLACA = ni.PLACA_ACTUAL
                 ) AS KM_TOTAL_VIDA,
                 (SELECT VK.KILOMETRAJE
-                    FROM SPEED400PI.NEU_VKILOMETRAJE VK
+                    FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE VK
                     WHERE VK.PLACA = ni.PLACA_ACTUAL
                     ORDER BY VK.ID DESC
                     FETCH FIRST 1 ROW ONLY
                 ) AS ODOMETRO,
                 ni.PRESION_ACTUAL AS PRESION_AIRE,
                 ni.TORQUE_ACTUAL AS TORQUE_APLICADO
-            FROM SPEED400PI.NEU_PADRON np
-            LEFT JOIN SPEED400AT.NEU_MARCA nm
+            FROM ${BD_SCHEMA}.NEU_PADRON np
+            LEFT JOIN ${BD_SCHEMA}.NEU_MARCA nm
                 ON nm.ID_MARCA = np.ID_MARCA
-            INNER JOIN SPEED400PI.NEU_INFORMACION ni
+            INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
                 ON ni.ID_NEUMATICO = np."ID"
-            INNER JOIN SPEED400AT.NEU_ESTADO ne
+            INNER JOIN ${BD_SCHEMA}.NEU_ESTADO ne
                 ON ne.ID_ESTADO = ni.ID_ESTADO
             WHERE ni.PLACA_ACTUAL = ? AND ni.ID_ESTADO = 2 ORDER BY ni.POSICION_ACTUAL`;
 
@@ -165,9 +102,9 @@ const listarNeumaticosAsignadosPorCodigo = async (req, res) => {
                 E.DESCRIPCION AS ESTADO, -- Aquí sí devolvemos texto si es por código especifico? No, mantengamos consistencia.
                 C.FECHA_ULTIMO_SUCESO AS FECHA_ASIGNADO,
                 C.SUPERVISOR_ACTUAL AS USUARIO_ASIGNA
-            FROM SPEED400AT.NEU_CABECERA C
-            LEFT JOIN SPEED400AT.NEU_ESTADO E ON C.ID_ESTADO = E.ID_ESTADO
-            LEFT JOIN SPEED400AT.PO_MARCA M ON C.ID_MARCA = M.ID
+            FROM ${BD_SCHEMA}.NEU_CABECERA C
+            LEFT JOIN ${BD_SCHEMA}.NEU_ESTADO E ON C.ID_ESTADO = E.ID_ESTADO
+            LEFT JOIN ${BD_SCHEMA}.PO_MARCA M ON C.ID_MARCA = M.ID
             WHERE C.CODIGO_CASCO = ?
         `;
 
@@ -200,7 +137,7 @@ const eliminarAsignacion = async (req, res) => {
         const neumaticoService = require("../services/neumaticoService"); // Importar servicio
 
         // 1. Obtener datos actuales antes de limpiar (para el historial)
-        const sqlGet = `SELECT CODIGO_CASCO, PLACA_ACTUAL, POSICION_ACTUAL, REMANENTE_ACTUAL, SUPERVISOR_ACTUAL FROM SPEED400AT.NEU_CABECERA WHERE ID_NEUMATICO = ?`;
+        const sqlGet = `SELECT CODIGO_CASCO, PLACA_ACTUAL, POSICION_ACTUAL, REMANENTE_ACTUAL, SUPERVISOR_ACTUAL FROM ${BD_SCHEMA}.NEU_CABECERA WHERE ID_NEUMATICO = ?`;
         const resultGet = await db.query(sqlGet, [id]);
 
         if (!resultGet || resultGet.length === 0) {
@@ -225,8 +162,8 @@ const eliminarAsignacion = async (req, res) => {
 
         // 3. Actualizar Cabecera a DISPONIBLE
         const queryUpdate = `
-            UPDATE SPEED400AT.NEU_CABECERA
-            SET ID_ESTADO = (SELECT ID_ESTADO FROM SPEED400AT.NEU_ESTADO WHERE CODIGO_INTERNO = 'DISPONIBLE'),
+            UPDATE ${BD_SCHEMA}.NEU_CABECERA
+            SET ID_ESTADO = (SELECT ID_ESTADO FROM ${BD_SCHEMA}.NEU_ESTADO WHERE CODIGO_INTERNO = 'DISPONIBLE'),
                 PLACA_ACTUAL = NULL, POSICION_ACTUAL = NULL, ID_VEHICULO_ACTUAL = NULL,
                 FECHA_ULTIMO_SUCESO = CURRENT_TIMESTAMP
             WHERE ID_NEUMATICO = ?
@@ -248,33 +185,6 @@ const listaUltimoMovPlaca = async (req, res) => {
         }
         const placaTrim = placa.trim();
 
-        // REFACTORIZADO A NEU_DETALLE
-        // Buscamos el último movimiento por posición para esta placa
-        // Excluyendo Acciones de BAJA (ID diferente según catálogo, pero usaremos CODIGO_INTERNO)
-
-        // const query = `
-        //     SELECT 
-        //         D.ID_MOVIMIENTO,
-        //         D.POSICION_NUEVA AS POSICION_NEU, -- Alias frontend
-        //         D.FECHA_SUCESO AS FECHA_MOVIMIENTO,
-        //         A.DESCRIPCION AS TIPO_MOVIMIENTO,  -- "MONTAJE", "ROTACION", etc.
-        //         D.ODOMETRO_VEHICULO AS ODOMETRO, 
-        //         D.REMANENTE_MEDIDO AS REMANENTE,
-        //         D.PRESION_MEDIDA AS PRESION,
-        //         D.PLACA,
-        //         D.OBSERVACION 
-        //     FROM SPEED400AT.NEU_DETALLE D
-        //     INNER JOIN (
-        //         SELECT POSICION_NUEVA, MAX(FECHA_SUCESO) AS FECHA_MAX
-        //         FROM SPEED400AT.NEU_DETALLE
-        //         WHERE TRIM(PLACA) = ? AND POSICION_NUEVA IS NOT NULL AND POSICION_NUEVA <> ''
-        //         GROUP BY POSICION_NUEVA
-        //     ) ULT ON D.POSICION_NUEVA = ULT.POSICION_NUEVA AND D.FECHA_SUCESO = ULT.FECHA_MAX
-        //     LEFT JOIN SPEED400AT.NEU_ACCION A ON D.ID_ACCION = A.ID_ACCION
-        //     WHERE TRIM(D.PLACA) = ?
-        //       AND (A.CODIGO_INTERNO <> 'BAJA' AND A.CODIGO_INTERNO <> 'RECUPERO')
-        //     ORDER BY D.POSICION_NUEVA`;
-
         const query = `
             WITH ULTIMO_MOV AS (
             SELECT
@@ -286,8 +196,8 @@ const listaUltimoMovPlaca = async (req, res) => {
                     PARTITION BY NM.ID_NEUMATICO, NM.PLACA
                     ORDER BY NM."ID"  DESC
                 ) AS RN
-            FROM SPEED400PI.NEU_MOVIMIENTOS NM
-            LEFT JOIN SPEED400AT.NEU_ACCION NA
+            FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
+            LEFT JOIN ${BD_SCHEMA}.NEU_ACCION NA
                 ON NA.ID_ACCION = NM.ID_ACCION
             )
             SELECT
@@ -299,8 +209,8 @@ const listaUltimoMovPlaca = async (req, res) => {
                 NI.PLACA_ACTUAL,
                 UM.ODOMETRO_VEHICULO,
                 UM.DESCRIPCION
-            FROM SPEED400PI.NEU_INFORMACION NI
-            INNER JOIN SPEED400PI.NEU_PADRON NP
+            FROM ${BD_SCHEMA}.NEU_INFORMACION NI
+            INNER JOIN ${BD_SCHEMA}.NEU_PADRON NP
                 ON NI.ID_NEUMATICO = NP."ID"
             INNER JOIN ULTIMO_MOV UM
                 ON UM.ID_NEUMATICO = NI.ID_NEUMATICO

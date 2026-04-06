@@ -1,5 +1,6 @@
 const db = require('../config/db');
-
+require('dotenv').config();
+const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 /**
  * Service Layer for Neumáticos Normalizados
  * Maneja la lógica de negocio y la traducción entre el Frontend (Texto) y el Backend Normalizado (IDs)
@@ -15,7 +16,7 @@ const neumaticoService = {
         if (!nombreMarca) return null;
         const nombre = nombreMarca.trim().toUpperCase();
         // Updated to use NEU_MARCA table
-        const sql = `SELECT ID_MARCA FROM SPEED400AT.NEU_MARCA WHERE UPPER(TRIM(MARCA)) = ?`;
+        const sql = `SELECT ID_MARCA FROM ${BD_SCHEMA}.NEU_MARCA WHERE UPPER(TRIM(MARCA)) = ?`;
         const result = await db.query(sql, [nombre]);
         return (result && result.length > 0) ? result[0].ID_MARCA : null;
     },
@@ -55,18 +56,18 @@ const neumaticoService = {
                     ni.TORQUE_ACTUAL,
                     ni.KM_TOTAL_VIDA AS KILOMETRO
 
-                FROM SPEED400PI.NEU_PADRON np
-                LEFT JOIN SPEED400PI.NEU_INFORMACION ni
+                FROM ${BD_SCHEMA}.NEU_PADRON np
+                LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
                     ON ni.ID_NEUMATICO = np.ID
-                LEFT JOIN SPEED400AT.NEU_ESTADO ne
+                LEFT JOIN ${BD_SCHEMA}.NEU_ESTADO ne
                     ON ne.ID_ESTADO = ni.ID_ESTADO
-                LEFT JOIN SPEED400AT.NEU_MARCA nm
+                LEFT JOIN ${BD_SCHEMA}.NEU_MARCA nm
                     ON nm.ID_MARCA = np.ID_MARCA
-                LEFT JOIN SPEED400AT.TPROV prov
+                LEFT JOIN ${BD_SCHEMA}.TPROV prov
                     ON prov.PRORUC = np.ID_PROVEEDOR
-                INNER JOIN SPEED400AT.MAE_TALLER_X_USUARIO u
+                INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
                     ON TRIM(u.CH_CODI_USUARIO) = (?)
-                INNER JOIN SPEED400AT.PO_TALLER t
+                INNER JOIN ${BD_SCHEMA}.PO_TALLER t
                     ON u.ID_TALLER = t.ID
                     AND t.DESCRIPCION = ni.PROYECTO_ACTUAL`;
 
@@ -94,7 +95,7 @@ const neumaticoService = {
         const idMarca = await neumaticoService.obtenerIdMarca(MARCA);
 
         // 2. Verificar si existe
-        const existeSql = `SELECT ID_NEUMATICO FROM SPEED400AT.NEU_CABECERA WHERE CODIGO_CASCO = ?`;
+        const existeSql = `SELECT ID_NEUMATICO FROM ${BD_SCHEMA}.NEU_CABECERA WHERE CODIGO_CASCO = ?`;
         const existeResult = await db.query(existeSql, [CODIGO]);
 
         let idNeumatico;
@@ -106,13 +107,13 @@ const neumaticoService = {
         } else {
             // INSERT
             const insertSql = `
-                INSERT INTO SPEED400AT.NEU_CABECERA (
+                INSERT INTO ${BD_SCHEMA}.NEU_CABECERA (
                     CODIGO_CASCO, ID_MARCA, MEDIDA, DISEÑO, REMANENTE_INICIAL,
                     REMANENTE_ACTUAL, PROVEEDOR_NOMBRE, COSTO_INICIAL,
                     INDICE_CARGA, INDICE_VELOCIDAD, DOT_FABRICACION, FECHA_COMPRA,
                     RQ, OC, PROYECTO, SUPERVISOR_ACTUAL,
                     ID_ESTADO
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT ID_ESTADO FROM SPEED400AT.NEU_ESTADO WHERE CODIGO_INTERNO = 'DISPONIBLE'))
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT ID_ESTADO FROM ${BD_SCHEMA}.NEU_ESTADO WHERE CODIGO_INTERNO = 'DISPONIBLE'))
             `;
             // Nota: db.query con ODBC a veces no devuelve el ID generado. 
             // Si es así, hay que hacer un select posterior.
@@ -157,11 +158,11 @@ const neumaticoService = {
         tipoBaja = null
     }) => {
 
-        const sqlEstado = `SELECT ID_ESTADO FROM SPEED400AT.NEU_ESTADO WHERE CODIGO_INTERNO = ?`;
+        const sqlEstado = `SELECT ID_ESTADO FROM ${BD_SCHEMA}.NEU_ESTADO WHERE CODIGO_INTERNO = ?`;
         const resEstado = await db.query(sqlEstado, [estadoDestino || 'DISPONIBLE']);
         const idEstadoResolved = (resEstado && resEstado.length > 0) ? resEstado[0].ID_ESTADO : null;
 
-        const sqlAccion = `SELECT ID_ACCION FROM SPEED400AT.NEU_ACCION WHERE CODIGO_INTERNO = ?`;
+        const sqlAccion = `SELECT ID_ACCION FROM ${BD_SCHEMA}.NEU_ACCION WHERE CODIGO_INTERNO = ?`;
         const resAccion = await db.query(sqlAccion, [tipoAccion]);
         const idAccionResolved = (resAccion && resAccion.length > 0) ? resAccion[0].ID_ACCION : null;
 
@@ -170,7 +171,7 @@ const neumaticoService = {
         }
 
         const sql = `
-            INSERT INTO SPEED400PI.NEU_MOVIMIENTOS (
+            INSERT INTO ${BD_SCHEMA}.NEU_MOVIMIENTOS (
                 ID_NEUMATICO, ID_VEHICULO,
                 PLACA, PROYECTO, POSICION_ANTERIOR, POSICION_NUEVA, ODOMETRO_VEHICULO,
                 REMANENTE_MEDIDO, PRESION_MEDIDA, TORQUE_APLICADO, OBS, USUARIO_REGISTRADOR,
@@ -223,15 +224,15 @@ const neumaticoService = {
                         NI.PROYECTO_ACTUAL,
                         NI.KM_TOTAL_VIDA,
                         (SELECT NM.REMANENTE_MEDIDO
-                        FROM SPEED400PI.NEU_MOVIMIENTOS NM
+                        FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
                         WHERE NM.ID_ACCION = 2 AND NM.ID_NEUMATICO = NP.ID
                         ORDER BY NM.ID
                         FETCH FIRST 1 ROW ONLY
                         ) AS REMANENTE_INICIAL
-                    FROM SPEED400PI.NEU_PADRON NP
-                    INNER JOIN SPEED400PI.NEU_INFORMACION NI
+                    FROM ${BD_SCHEMA}.NEU_PADRON NP
+                    INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
                         ON NI.ID_NEUMATICO = NP."ID"
-                    LEFT JOIN SPEED400AT.NEU_ESTADO NE
+                    LEFT JOIN ${BD_SCHEMA}.NEU_ESTADO NE
                         ON NE.ID_ESTADO = NI.ID_ESTADO
                     WHERE NP.CODIGO = ?`;
 
@@ -247,7 +248,6 @@ const neumaticoService = {
         // const kmTotalVida = Number(neumatico.KM_TOTAL_VIDA)
         // const kmTotalSumVida = kmTotalVida + KmRecorridoxEtapa
 
-        console.log({ remanenteInicial })
 
         // TODO:
         // * verificar si tiene algún movimiento (cualquiera de asignación) usar ese remanente
@@ -262,7 +262,7 @@ const neumaticoService = {
 
         // 2. Actualizar Cabecera (Estado y Ubicacion)
         const sqlUpdate = `
-            UPDATE SPEED400PI.NEU_INFORMACION
+            UPDATE ${BD_SCHEMA}.NEU_INFORMACION
             SET
                 ID_ESTADO = 2,
                 PLACA_ACTUAL = ?,
@@ -315,7 +315,7 @@ const neumaticoService = {
         const sqlInsp = `
             SELECT
                 FECHA_INSPECCION as FECHA_SUCESO
-            FROM SPEED400PI.NEU_VKILOMETRAJE
+            FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE
             WHERE PLACA = ?
             ORDER BY ID DESC
             FETCH FIRST 1 ROW ONLY`;
@@ -349,14 +349,14 @@ const neumaticoService = {
                 NI.PRESION_ACTUAL as PRESION_MEDIDA,
                 (
                     SELECT KILOMETRAJE
-                    FROM SPEED400PI.NEU_VKILOMETRAJE
+                    FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE
                     WHERE PLACA = ?
                     ORDER BY ID DESC
                     FETCH FIRST 1 ROW ONLY
                 ) AS ODOMETRO_VEHICULO,
                 NI.PROYECTO_ACTUAL AS PROYECTO
-            FROM SPEED400PI.NEU_PADRON NP
-            LEFT JOIN SPEED400PI.NEU_INFORMACION NI
+            FROM ${BD_SCHEMA}.NEU_PADRON NP
+            LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
                 ON NI.ID_NEUMATICO = NP.ID
                 AND NI.PLACA_ACTUAL = ?
             WHERE NP.CODIGO = ?`;
@@ -368,16 +368,6 @@ const neumaticoService = {
         const ultimoRegistro = resultId[0];
 
         const idNeumatico = ultimoRegistro.ID_NEUMATICO;
-
-        // const sqlUltimo =
-        //     `SELECT ODOMETRO_VEHICULO, PRESION_MEDIDA, REMANENTE_MEDIDO, KM_RECORRIDOS_ETAPA
-        //     FROM SPEED400AT.NEU_DETALLE
-        //     WHERE ID_NEUMATICO = ?
-        //     ORDER BY FECHA_SUCESO DESC
-        //     FETCH FIRST 1 ROW ONLY`;
-
-        // const resultUltimo = await db.query(sqlUltimo, [idNeumatico]);
-        // const ultimoRegistro = resultUltimo && resultUltimo[0] ? resultUltimo[0] : {};
 
         // Heredar valores si no se proporcionan nuevos
 
@@ -392,7 +382,7 @@ const neumaticoService = {
         // TODO: ACTUALIZAR EL NI_INFORMACION
 
         const sqlUpdate = `
-            UPDATE SPEED400PI.NEU_INFORMACION 
+            UPDATE ${BD_SCHEMA}.NEU_INFORMACION 
                 SET
                     POSICION_ACTUAL = ?,
                     FECHA_ULTIMA_ACTUALIZACION = CURRENT_TIMESTAMP
@@ -435,13 +425,13 @@ const neumaticoService = {
             NI.POSICION_ACTUAL,
             NI.PROYECTO_ACTUAL,
             (SELECT VK.FECHA_INSPECCION
-                FROM SPEED400PI.NEU_VKILOMETRAJE VK
+                FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE VK
                 WHERE VK.PLACA = NI.PLACA_ACTUAL
                 ORDER BY VK.ID DESC
                 FETCH FIRST 1 ROW ONLY
             ) AS ULTIMA_INSPECCION,
             (SELECT VK.KILOMETRAJE
-                FROM SPEED400PI.NEU_VKILOMETRAJE VK
+                FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE VK
                 WHERE VK.PLACA = NI.PLACA_ACTUAL
                 ORDER BY VK.ID DESC
                 FETCH FIRST 1 ROW ONLY
@@ -451,8 +441,8 @@ const neumaticoService = {
             NI.REMANENTE_ACTUAL AS REMANENTE_MEDIDO,
             NI.KM_TOTAL_VIDA AS KM_RECORRIDOS_ETAPA,
             NI.PORCENTAJE_VIDA
-            FROM SPEED400PI.NEU_INFORMACION NI
-        LEFT JOIN SPEED400PI.NEU_PADRON NP
+            FROM ${BD_SCHEMA}.NEU_INFORMACION NI
+        LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
             ON NP."ID" = NI.ID_NEUMATICO
         WHERE NP.CODIGO = ?`;
 
@@ -483,7 +473,7 @@ const neumaticoService = {
 
         if (TIPO_MOVIMIENTO === "RECUPERADO") {
             sqlUpdate = `
-                UPDATE SPEED400PI.NEU_INFORMACION SET
+                UPDATE ${BD_SCHEMA}.NEU_INFORMACION SET
                     ID_ESTADO = 1,
                     PLACA_ACTUAL = NULL,
                     POSICION_ACTUAL = NULL,
@@ -493,8 +483,8 @@ const neumaticoService = {
                 WHERE ID_NEUMATICO = ?`;
         } else {
             sqlUpdate = `
-                UPDATE SPEED400PI.NEU_INFORMACION SET
-                    ID_ESTADO = (SELECT ID_ESTADO FROM SPEED400AT.NEU_ESTADO WHERE CODIGO_INTERNO = ?),
+                UPDATE ${BD_SCHEMA}.NEU_INFORMACION SET
+                    ID_ESTADO = (SELECT ID_ESTADO FROM ${BD_SCHEMA}.NEU_ESTADO WHERE CODIGO_INTERNO = ?),
                     PLACA_ACTUAL = NULL,
                     POSICION_ACTUAL = NULL,
                     FECHA_ULTIMA_ACTUALIZACION = CURRENT_TIMESTAMP
@@ -544,23 +534,6 @@ const neumaticoService = {
             CODIGO, REMANENTE, PRESION, KILOMETRO, OBSERVACION, PLACA, TORQUE, cod_supervisor, id_operacion, fecha_inspeccion
         } = data;
 
-        // console.log(`[registrarInspeccion] INICIO para Código: '${CODIGO}', Placa: '${PLACA}', KM: ${KILOMETRO}, Rem: ${REMANENTE}`);
-
-        // 1. Obtener Datos Actuales y de Referencia
-        // const sqlGet = `
-        //     SELECT C.ID_NEUMATICO, 
-        //            C.REMANENTE_INICIAL, 
-        //            C.REMANENTE_ACTUAL, 
-        //            C.ODOMETRO_AL_MONTAR, ** FALTA
-        //            C.PLACA_ACTUAL, 
-        //            C.POSICION_ACTUAL,
-        //            C.KM_TOTAL_VIDA, -- Necesario para acumular
-        //            E.CODIGO_INTERNO as ESTADO_CODIGO
-        //     FROM SPEED400AT.NEU_CABECERA C
-        //     LEFT JOIN SPEED400AT.NEU_ESTADO E ON C.ID_ESTADO = E.ID_ESTADO
-        //     WHERE RTRIM(C.CODIGO_CASCO) = ?
-        // `;
-
         // TODO:
         // * Traer el primer remanente de los neu_movimientos -> no importa si son de la misma placa, solo que sea de la misma
 
@@ -568,7 +541,7 @@ const neumaticoService = {
             SELECT
                 NP.ID AS ID_NEUMATICO,
                 (SELECT NM.REMANENTE_MEDIDO
-                FROM SPEED400PI.NEU_MOVIMIENTOS NM
+                FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
                 WHERE NM.ID_ACCION = 2 AND NM.ID_NEUMATICO = NP.ID
                 ORDER BY NM.ID ASC
                 FETCH FIRST 1 ROW ONLY
@@ -579,16 +552,16 @@ const neumaticoService = {
                 NI.KM_TOTAL_VIDA,
                 NE.CODIGO_INTERNO AS ESTADO_CODIGO,
                 (SELECT VK.KILOMETRAJE
-                FROM SPEED400PI.NEU_VKILOMETRAJE VK
+                FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE VK
                 WHERE VK.PLACA = NI.PLACA_ACTUAL
                 ORDER BY VK.ID DESC
                 FETCH FIRST 1 ROW ONLY
                 ) AS ODOMETRO_AL_MONTAR,
                 NI.PROYECTO_ACTUAL
-            FROM SPEED400PI.NEU_PADRON NP
-            LEFT JOIN SPEED400PI.NEU_INFORMACION NI
+            FROM ${BD_SCHEMA}.NEU_PADRON NP
+            LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
                 ON NP."ID" = NI.ID_NEUMATICO
-            LEFT JOIN SPEED400AT.NEU_ESTADO NE
+            LEFT JOIN ${BD_SCHEMA}.NEU_ESTADO NE
                 ON NI.ID_ESTADO = NE.ID_ESTADO
             WHERE NP.CODIGO = ? AND NI.PLACA_ACTUAL = ?`;
 
@@ -670,7 +643,7 @@ const neumaticoService = {
         }
 
         const sqlUpdate = `
-            UPDATE SPEED400PI.NEU_INFORMACION SET
+            UPDATE ${BD_SCHEMA}.NEU_INFORMACION SET
                 REMANENTE_ACTUAL = ?,
                 PRESION_ACTUAL = ?,
                 FECHA_ULTIMA_ACTUALIZACION = CURRENT_TIMESTAMP,
@@ -723,53 +696,6 @@ const neumaticoService = {
         const codigoTrim = codigo.trim();
         const params = [codigoTrim];
 
-        // let query = `
-        //     SELECT 
-        //         -- Datos de Cabecera (PRIORIDAD: Siempre existen)
-        //         C.CODIGO_CASCO AS CODIGO, 
-        //         C.ODOMETRO_AL_MONTAR AS ODOMETRO_INICIAL, **FALTA
-        //         C.DISEÑO,
-        //         C.MEDIDA,
-        //         M.MARCA,
-        //         C.PLACA_ACTUAL AS PLACA,
-        //         C.POSICION_ACTUAL AS POSICION_NEU,
-        //         -- Datos del Detalle (Reciente, puede ser nulo)
-        //         d.ID_MOVIMIENTO, ** FALTA
-        //         d.FECHA_SUCESO AS FECHA_MOVIMIENTO,
-        //         d.ODOMETRO_VEHICULO AS KILOMETRO,
-        //         d.REMANENTE_MEDIDO AS REMANENTE,
-        //         d.PRESION_MEDIDA AS PRESION_AIRE,
-        //         d.SUPERVISOR AS USUARIO_SUPER, ** FALTA
-        //         d.OBSERVACION, *+ FALTA
-        //         A.DESCRIPCION AS TIPO_MOVIMIENTO, ** FALTA
-        //         -- Datos del Vehículo Actual (PO_VEHICULO)
-        //         V.KILOMETRAJE AS ODOMETRO_VEHICULO_ACTUAL
-        //     FROM SPEED400AT.NEU_CABECERA C
-        //     LEFT JOIN SPEED400AT.NEU_MARCA M ON C.ID_MARCA = M.ID_MARCA
-        //     LEFT JOIN SPEED400AT.PO_VEHICULO V ON TRIM(C.PLACA_ACTUAL) = TRIM(V.NUMPLA)
-        //     LEFT JOIN SPEED400AT.NEU_DETALLE d ON d.ID_MOVIMIENTO = (
-        //         SELECT MAX(ID_MOVIMIENTO) 
-        //         FROM SPEED400AT.NEU_DETALLE 
-        //         WHERE CODIGO_CASCO = C.CODIGO_CASCO
-        //     )
-        //     LEFT JOIN SPEED400AT.NEU_ACCION A ON d.ID_ACCION = A.ID_ACCION
-        //     WHERE RTRIM(C.CODIGO_CASCO) = ?
-        // `;
-
-        //     (SELECT VK.KILOMETRAJE
-        //                 FROM SPEED400PI.NEU_VKILOMETRAJE VK
-        //                 WHERE VK.PLACA = ni.PLACA_ACTUAL
-        //                 ORDER BY VK.ID DESC
-        //                 FETCH FIRST 1 ROW ONLY
-        //             ) AS ODOMETRO,
-
-
-        // (SELECT ODOMETRO_VEHICULO 
-        //  FROM SPEED400PI.NEU_MOVIMIENTOS 
-        //  WHERE ID_NEUMATICO = np.ID 
-        //  ORDER BY FECHA_MOVIMIENTO DESC 
-        //  FETCH FIRST 1 ROW ONLY) AS ODOMETRO_ULTIMO
-
         let query = `
             SELECT
                 NP.CODIGO AS CODIGO,
@@ -781,7 +707,7 @@ const neumaticoService = {
                 NI.POSICION_ACTUAL AS POSICION_NEU,
                 NI.FECHA_ULTIMA_ACTUALIZACION AS FECHA_MOVIMIENTO,
                 (SELECT VK.KILOMETRAJE
-                    FROM SPEED400PI.NEU_VKILOMETRAJE VK
+                    FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE VK
                     WHERE VK.PLACA = NI.PLACA_ACTUAL
                     ORDER BY VK.ID DESC
                     FETCH FIRST 1 ROW ONLY
@@ -789,12 +715,12 @@ const neumaticoService = {
                 NI.REMANENTE_ACTUAL AS REMANENTE,
                 NI.PRESION_ACTUAL AS PRESION_AIRE,
                 V.KILOMETRAJE AS ODOMETRO_VEHICULO_ACTUAL
-            FROM SPEED400PI.NEU_PADRON NP
-            INNER JOIN SPEED400PI.NEU_INFORMACION NI
+            FROM ${BD_SCHEMA}.NEU_PADRON NP
+            INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
                 ON NI.ID_NEUMATICO = NP.ID
-            LEFT JOIN SPEED400AT.NEU_MARCA NM
+            LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NM
                 ON NM.ID_MARCA = NP.ID_MARCA
-            LEFT JOIN SPEED400AT.PO_VEHICULO V
+            LEFT JOIN ${BD_SCHEMA}.PO_VEHICULO V
                 ON TRIM(NI.PLACA_ACTUAL) = TRIM(V.NUMPLA)
             WHERE NP.CODIGO = ?`;
 
