@@ -3,6 +3,16 @@ const xlsx = require("xlsx");
 require('dotenv').config();
 const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 
+const normalizarCampos = (campo, lg) => {
+    if (!campo) return null
+    const campoLimpio = campo.toString().trim().substring(0, lg)
+    if (campoLimpio.toUpperCase() === 'NO') return null
+    if (campoLimpio.length === 0) return null
+    if (campoLimpio === '-') return null
+    if (campoLimpio === '') return null
+    return campoLimpio
+}
+
 const cargarPadronDesdeExcel = async (req, res) => {
     try {
 
@@ -39,6 +49,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
             FECHA_FABRICACION_COD: encabezados.find(col => limpiarEncabezado(col).includes("FECHA FABRICACION") || limpiarEncabezado(col).includes("FECHA FABRICACIÓN")),
             RQ: encabezados.find(col => limpiarEncabezado(col).includes("RQ")),
             OC: encabezados.find(col => limpiarEncabezado(col).includes("N° OC")),
+            LEASING: encabezados.find(col => limpiarEncabezado(col).includes("LEASING")),
             TALLER: encabezados.find(col => limpiarEncabezado(col).includes("TALLER")),
             COSTO: encabezados.find(col => limpiarEncabezado(col).includes("COSTO")),
             PROVEEDOR: encabezados.find(col => limpiarEncabezado(col).includes("RUC PROVEEDOR")),
@@ -129,10 +140,11 @@ const cargarPadronDesdeExcel = async (req, res) => {
                     REMANENTE_INICIAL: columnas.REMANENTE ? (parseFloat(fila[columnas.REMANENTE]) || 0) : null,
                     PR: columnas.PR ? parseInt((fila[columnas.PR] || 0).toString().trim()) : null,
                     CARGA: columnas.CARGA ? parseInt((fila[columnas.CARGA] || 0).toString().trim()) : null,
-                    VELOCIDAD: columnas.VELOCIDAD ? (fila[columnas.VELOCIDAD] || '-').trim() : null,
-                    FECHA_FABRICACION_COD: columnas.FECHA_FABRICACION_COD ? (fila[columnas.FECHA_FABRICACION_COD] || '').toString().trim().substring(0, 4) : null,
-                    RQ: columnas.RQ ? (fila[columnas.RQ] || '').toString().trim().substring(0, 10) : null,
-                    OC: columnas.OC ? (fila[columnas.OC] || '').toString().trim().substring(0, 10) : null,
+                    VELOCIDAD: columnas.VELOCIDAD ? normalizarCampos(fila[columnas.VELOCIDAD] || '0', 10) : 0,
+                    FECHA_FABRICACION_COD: columnas.FECHA_FABRICACION_COD ? normalizarCampos(fila[columnas.FECHA_FABRICACION_COD], 4) : null,
+                    RQ: columnas.RQ ? normalizarCampos(fila[columnas.RQ], 15) : null,
+                    OC: columnas.OC ? normalizarCampos(fila[columnas.OC], 10) : null,
+                    LEASING: columnas.LEASING ? normalizarCampos(fila[columnas.LEASING], 15) : null,
                     TALLER: columnas.TALLER ? (fila[columnas.TALLER] || '').trim().substring(0, 100) : null,
                     COSTO_INICIAL: columnas.COSTO ? (parseFloat(fila[columnas.COSTO]) || 0) : null,
                     ID_PROVEEDOR: rucProveedor,
@@ -179,13 +191,13 @@ const cargarPadronDesdeExcel = async (req, res) => {
 
                 // INSERT - NEUMATICO
 
-                const query = `INSERT INTO ${BD_SCHEMA}.NEU_PADRON (CODIGO, ID_MARCA, MEDIDA, DISENO, PR, CARGA, VELOCIDAD, FECHA_FABRICACION_COD, REMANENTE_INICIAL, FECHA_COMPRA, COSTO_INICIAL, ID_PROVEEDOR, RQ, OC, PROYECTO, FECHA_ENVIO) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                const query = `INSERT INTO ${BD_SCHEMA}.NEU_PADRON (CODIGO, ID_MARCA, MEDIDA, DISENO, PR, CARGA, VELOCIDAD, FECHA_FABRICACION_COD, REMANENTE_INICIAL, FECHA_COMPRA, COSTO_INICIAL, ID_PROVEEDOR, RQ, OC, LEASING, PROYECTO, FECHA_ENVIO) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
                 const params = [
                     filaLimpia.CODIGO, filaLimpia.ID_MARCA, filaLimpia.MEDIDA, filaLimpia.DISENO,
                     filaLimpia.PR, filaLimpia.CARGA, filaLimpia.VELOCIDAD, filaLimpia.FECHA_FABRICACION_COD, filaLimpia.REMANENTE_INICIAL,
                     filaLimpia.FECHA_COMPRA, filaLimpia.COSTO_INICIAL, filaLimpia.ID_PROVEEDOR,
-                    filaLimpia.RQ, filaLimpia.OC, filaLimpia.TALLER, filaLimpia.FECHA_ENVIO
+                    filaLimpia.RQ, filaLimpia.OC, filaLimpia.LEASING, filaLimpia.TALLER, filaLimpia.FECHA_ENVIO
                 ];
 
                 await db.query(query, params);

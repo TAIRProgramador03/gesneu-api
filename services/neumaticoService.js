@@ -36,7 +36,7 @@ const neumaticoService = {
                     np.CARGA,
                     np.VELOCIDAD,
                     np.FECHA_FABRICACION_COD AS FECHA_FABRICACION_COD,
-
+                    np.LEASING,
                     np.RQ,
                     np.OC,
                     TRIM(ni.PROYECTO_ACTUAL) AS PROYECTO,
