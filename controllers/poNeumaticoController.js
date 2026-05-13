@@ -355,6 +355,446 @@ const reubicarNeumaticosPorProyecto = async (req, res) => {
     res.status(201).json({ mensaje: "Reubicaciones realizadas correctamente." });
 }
 
+const verificarExistencia = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    const usuario = req.session.user.usuario;
+
+    if (!req.query.codigo) return res.status(400).json({ error: 'Codigo de neumático es requerido' });
+    const { codigo } = req.query
+
+    try {
+        let query = `
+            SELECT
+                p."ID" AS ID_NEUMATICO,
+                P.CODIGO AS CODIGO_NEUMATICO,
+                nm.MARCA AS MARCA_NEUMATICO,
+                p.MEDIDA AS MEDIDA_NEUMATICO,
+                p.DISENO AS DISENO_NEUMATICO,
+                p.PR AS PR_NEUMATICO,
+                p.RQ AS RQ_NEUMATICO,
+                p.OC AS OC_NEUMATICO,
+                p.LEASING AS LEASING_NEUMATICO,
+                p.PROYECTO AS TALLER_INICIAL,
+                i.PROYECTO_ACTUAL AS TALLER_ACTUAL,
+                p.COSTO_INICIAL AS COSTO_NEUMATICO,
+                prov.PRONOM AS PROVEEDOR_NEUMATICO,
+                prov.PRORUC AS RUC_PROVEEDOR_NEUMATICO,
+                P.FECHA_FABRICACION_COD AS FECHA_FABRIACACION,
+                CAST(i.ES_RECUPERADO AS SMALLINT) AS RECUPERADO_NEUMATICO,
+                ne.CODIGO_INTERNO AS SITUACION_NEUMATICO,
+                i.PLACA_ACTUAL AS PLACA_ACTUAL,
+                i.REMANENTE_ACTUAL AS REMANENTE_ACTUAL,
+                nm1.REMANENTE_INICIAL AS REMANENTE_MONTADO,
+                p.REMANENTE_INICIAL AS REMANENTE_ORIGINAL,
+                i.PRESION_ACTUAL AS PRESION_ACTUAL,
+                i.TORQUE_ACTUAL AS TORQUE_ACTUAL,
+                i.PORCENTAJE_VIDA AS PORCENTAJE_VIDA
+            FROM ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+                INNER JOIN ${BD_SCHEMA}.PO_TALLER t
+                    ON u.ID_TALLER = t.ID
+                INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION i
+                    ON t.DESCRIPCION = i.PROYECTO_ACTUAL
+                INNER JOIN ${BD_SCHEMA}.NEU_PADRON p
+                    ON i.ID_NEUMATICO = p.ID
+                LEFT JOIN ${BD_SCHEMA}.NEU_MARCA nm
+                    ON nm.ID_MARCA = p.ID_MARCA
+                LEFT JOIN ${BD_SCHEMA}.TPROV prov
+                    ON prov.PRORUC = p.ID_PROVEEDOR
+                LEFT JOIN ${BD_SCHEMA}.NEU_ESTADO ne
+                    ON ne.ID_ESTADO = i.ID_ESTADO
+                LEFT JOIN (
+                SELECT ID_NEUMATICO, REMANENTE_MEDIDO AS REMANENTE_INICIAL,
+                ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID ASC) AS RN
+                FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 2
+                ) nm1 ON nm1.ID_NEUMATICO = p."ID" AND nm1.RN = 1
+            WHERE TRIM(u.CH_CODI_USUARIO) = ?
+            AND p.CODIGO = ?`;
+
+        const result = await db.query(query, [usuario, codigo.trim()]);
+        const status = result.length >= 1 ? true : false
+        res.json({
+            status: status,
+            data: result
+        });
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
+const cantidadDeEstados = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    const usuario = req.session.user.usuario;
+    try {
+        let query = `
+        SELECT
+            COALESCE(SUM(CASE WHEN ni.PORCENTAJE_VIDA < 39 THEN 1 ELSE 0 END), 0) AS NEUMATICOS_CRITICO,
+            COALESCE(SUM(CASE WHEN ni.PORCENTAJE_VIDA < 79 AND ni.PORCENTAJE_VIDA >= 39  THEN 1 ELSE 0 END), 0) AS NEUMATICOS_REGULAR,
+            COALESCE(SUM(CASE WHEN ni.PORCENTAJE_VIDA <= 100 AND ni.PORCENTAJE_VIDA >= 79 THEN 1 ELSE 0 END), 0) AS NEUMATICOS_BUENO,
+            COUNT(*) AS NEUMATICOS_TOTALES
+        FROM ${BD_SCHEMA}.NEU_PADRON np
+        LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
+            ON ni.ID_NEUMATICO = np.ID
+        INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+            ON TRIM(u.CH_CODI_USUARIO) = ?
+        INNER JOIN ${BD_SCHEMA}.PO_TALLER t
+            ON u.ID_TALLER = t.ID
+            AND t.DESCRIPCION = ni.PROYECTO_ACTUAL
+        `;
+
+        const result = await db.query(query, [usuario]);
+        res.json(result[0]);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
+
+const getEstadoCritico = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    const usuario = req.session.user.usuario;
+
+    try {
+        let query = `
+        SELECT
+            np.ID AS ID_NEUMATICO,
+            np.CODIGO  AS CODIGO_NEUMATICO,
+            nm.MARCA AS MARCA_NEUMATICO,
+            np.MEDIDA AS MEDIDA_NEUMATICO,
+            np.DISENO AS DISENO_NEUMATICO,
+            ni.PLACA_ACTUAL AS PLACA_VEHICULO,
+            ni.PRESION_ACTUAL AS PRESION_NEUMATICO,
+            ni.TORQUE_ACTUAL AS TORQUE_NEUMATICO,
+            ni.REMANENTE_ACTUAL AS REMANENTE_NEUMATICO,
+            ni.PORCENTAJE_VIDA AS PORCENTAJE_VIDA
+        FROM ${BD_SCHEMA}.NEU_PADRON np
+        LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
+            ON ni.ID_NEUMATICO = np.ID
+        INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+            ON TRIM(u.CH_CODI_USUARIO) = ?
+        INNER JOIN ${BD_SCHEMA}.PO_TALLER t
+            ON u.ID_TALLER = t.ID
+            AND t.DESCRIPCION = ni.PROYECTO_ACTUAL
+        LEFT JOIN ${BD_SCHEMA}.NEU_MARCA nm
+            ON nm.ID_MARCA = np.ID_MARCA
+        WHERE ni.PORCENTAJE_VIDA < 39
+        AND ni.ID_ESTADO = 2
+        ORDER BY ni.PORCENTAJE_VIDA ASC
+        LIMIT 10
+        `;
+        const result = await db.query(query, [usuario]);
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
+
+const getCantidadPorMarca = async (req, res) => {
+
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    const usuario = req.session.user.usuario;
+
+    try {
+        let query = `
+            SELECT
+                nm.MARCA AS MARCA_NEUMATICO,
+                COUNT(*) AS CANTIDAD_NEUMATICOS
+            FROM ${BD_SCHEMA}.NEU_PADRON np
+            LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
+                ON ni.ID_NEUMATICO = np.ID
+            INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+                ON TRIM(u.CH_CODI_USUARIO) = ?
+            INNER JOIN ${BD_SCHEMA}.PO_TALLER t
+                ON u.ID_TALLER = t.ID
+                AND t.DESCRIPCION = ni.PROYECTO_ACTUAL
+            LEFT JOIN ${BD_SCHEMA}.NEU_MARCA nm
+                ON nm.ID_MARCA = np.ID_MARCA
+            GROUP BY nm.MARCA
+        `;
+        const result = await db.query(query, [usuario]);
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
+const getCantidadPorDiseno = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    const usuario = req.session.user.usuario;
+    try {
+        let query = `
+            SELECT
+                np.DISENO AS DISENO_NEUMATICO,
+                COUNT(*) AS CANTIDAD_NEUMATICOS
+            FROM ${BD_SCHEMA}.NEU_PADRON np
+            LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
+                ON ni.ID_NEUMATICO = np.ID
+            INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+                ON TRIM(u.CH_CODI_USUARIO) = ?
+            INNER JOIN ${BD_SCHEMA}.PO_TALLER t
+                ON u.ID_TALLER = t.ID
+                AND t.DESCRIPCION = ni.PROYECTO_ACTUAL
+            GROUP BY np.DISENO
+        `;
+        const result = await db.query(query, [usuario]);
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
+
+const getCantidadPorMedida = async (req, res) => {
+
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    const usuario = req.session.user.usuario;
+
+    try {
+        let query = `
+            SELECT
+                np.MEDIDA AS MEDIDA_NEUMATICO,
+                SUM(CASE WHEN ni.ID_ESTADO = 1 THEN 1 ELSE 0 END) AS MEDIDA_DISPONIBLE,
+                SUM(CASE WHEN ni.ID_ESTADO = 2 THEN 1 ELSE 0 END) AS MEDIDA_ASIGNADA,
+                SUM(CASE WHEN ni.ID_ESTADO = 3 THEN 1 ELSE 0 END) AS MEDIDA_BAJA,
+                COUNT(*) AS CANTIDAD_NEUMATICOS
+            FROM ${BD_SCHEMA}.NEU_PADRON np
+            LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
+                ON ni.ID_NEUMATICO = np.ID
+            INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+                ON TRIM(u.CH_CODI_USUARIO) = ?
+            INNER JOIN ${BD_SCHEMA}.PO_TALLER t
+                ON u.ID_TALLER = t.ID
+                AND t.DESCRIPCION = ni.PROYECTO_ACTUAL
+            GROUP BY np.MEDIDA
+        `;
+
+        const result = await db.query(query, [usuario]);
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
+const getDesgastePorMilKms = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    const usuario = req.session.user.usuario;
+
+    const { valuesToSend } = req.body
+    const placeholders = valuesToSend.map(() => '?').join(',');
+
+    try {
+        let query = `
+            SELECT
+                NP."ID" AS ID_NEUMATICO,
+                NP.CODIGO AS CODIGO_NEUMATICO,
+                NM.MARCA AS MARCA_NEUMATICO,
+                NP.MEDIDA AS MEDIDA_NEUMATICO,
+                NP.DISENO AS DISENO_NEUMATICO,
+                NI.KM_TOTAL_VIDA AS KM_TOTAL_VIDA_NEUMATICO,
+                NP.REMANENTE_INICIAL AS REMANENTE_INCIAL,
+                ri.REMANENTE_MONTADO AS REMANENTE_MONTADO,
+                NI.REMANENTE_ACTUAL AS REMANENTE_ACTUAL,
+                CASE WHEN KM_TOTAL_VIDA = 0 THEN 0
+                    WHEN KM_TOTAL_VIDA >= 1 THEN CAST((((ri.REMANENTE_MONTADO - NI.REMANENTE_ACTUAL) / NI.KM_TOTAL_VIDA) * 1000) AS DECIMAL(10, 2))
+                    ELSE 0
+                END AS DESGASTE_POR_1000KM,
+                CASE WHEN KM_TOTAL_VIDA = 0 THEN 0
+                    WHEN KM_TOTAL_VIDA >= 1 THEN CAST((NP.COSTO_INICIAL / NI.KM_TOTAL_VIDA) AS DECIMAL(10, 5))
+                    ELSE 0
+                END AS COSTO_POR_KM,
+                CASE WHEN KM_TOTAL_VIDA = 0 THEN 0
+                    WHEN KM_TOTAL_VIDA >= 1 THEN CAST((NI.KM_TOTAL_VIDA / (ri.REMANENTE_MONTADO - NI.REMANENTE_ACTUAL)) AS DECIMAL(10, 2))
+                    ELSE 0
+                END AS KM_POR_REMAMENTE,
+                NP.COSTO_INICIAL AS COSTO_NEUMATICO,
+                nmbaja.TIPO_BAJA,
+                nmbaja.FECHA_DE_BAJA
+            FROM ${BD_SCHEMA}.NEU_INFORMACION NI
+            LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
+                ON NP.ID = NI.ID_NEUMATICO
+            LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NM
+                ON NM.ID_MARCA = NP.ID_MARCA
+            INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO U
+                ON TRIM(u.CH_CODI_USUARIO) = ?
+            INNER JOIN ${BD_SCHEMA}.PO_TALLER T
+                ON U.ID_TALLER = T.ID
+                AND T.DESCRIPCION = NI.PROYECTO_ACTUAL
+            LEFT JOIN (
+                SELECT ID_NEUMATICO, REMANENTE_MEDIDO AS REMANENTE_MONTADO,
+                ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID ASC) AS RN
+                FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 2
+            ) ri ON ri.ID_NEUMATICO = np."ID" AND ri.RN = 1
+            LEFT JOIN (
+                SELECT ID_NEUMATICO, TIPO_BAJA, FECHA_RECUPERADO AS FECHA_DE_BAJA,
+                ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID DESC) AS RN1
+                FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
+            ) nmbaja ON nmbaja.ID_NEUMATICO = np.ID AND nmbaja.RN1 = 1
+            WHERE NI.ID_ESTADO = 3 AND NI.KM_TOTAL_VIDA >= 1
+        `;
+
+        if (valuesToSend.length >= 1) query += ` AND NI.ID_NEUMATICO IN (${placeholders})`
+        query += ` ORDER BY nmbaja.FECHA_DE_BAJA DESC`
+
+        const params = [usuario]
+        params.concat(valuesToSend)
+        const result = await db.query(query, params.concat(valuesToSend));
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
+const getCodigoNeumaticosPorMilKms = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    const usuario = req.session.user.usuario;
+
+    try {
+        let query = `
+        SELECT
+            NP."ID" AS ID_NEUMATICO,
+            NP.CODIGO AS CODIGO_NEUMATICO,
+            CASE WHEN KM_TOTAL_VIDA = 0 THEN 0
+                WHEN KM_TOTAL_VIDA >= 1 THEN CAST((((ri.REMANENTE_MONTADO - NI.REMANENTE_ACTUAL) / NI.KM_TOTAL_VIDA) * 1000) AS DECIMAL(10, 2))
+                ELSE 0
+            END AS DESGASTE_POR_1000KM
+        FROM ${BD_SCHEMA}.NEU_INFORMACION NI
+        LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
+            ON NP.ID = NI.ID_NEUMATICO
+        INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO U
+            ON TRIM(u.CH_CODI_USUARIO) = ?
+        INNER JOIN ${BD_SCHEMA}.PO_TALLER T
+            ON U.ID_TALLER = T.ID
+            AND T.DESCRIPCION = NI.PROYECTO_ACTUAL
+        LEFT JOIN (
+            SELECT ID_NEUMATICO, REMANENTE_MEDIDO AS REMANENTE_MONTADO,
+            ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID ASC) AS RN
+            FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 2
+        ) ri ON ri.ID_NEUMATICO = np."ID" AND ri.RN = 1
+        LEFT JOIN (
+            SELECT ID_NEUMATICO, TIPO_BAJA, FECHA_RECUPERADO AS FECHA_DE_BAJA,
+            ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID DESC) AS RN1
+            FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
+        ) nmbaja ON nmbaja.ID_NEUMATICO = np.ID AND nmbaja.RN1 = 1
+        WHERE NI.ID_ESTADO = 3 AND NI.KM_TOTAL_VIDA >= 1
+        ORDER BY nmbaja.FECHA_DE_BAJA DESC`;
+
+        const result = await db.query(query, [usuario]);
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
+
+const getAllDisenos = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    try {
+        const query = `
+        SELECT
+            DISENO AS "value",
+            DISENO AS "label"
+        FROM ${BD_SCHEMA}.NEU_DISENO`
+        const result = await db.query(query);
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
+const getAllMedidas = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    try {
+        const query = `
+        SELECT
+            MEDIDA AS "value",
+            MEDIDA AS "label"
+        FROM ${BD_SCHEMA}.NEU_MEDIDA`
+        const result = await db.query(query);
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
+const getAllMarcas = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    try {
+        const query = `
+        SELECT
+            ID_MARCA AS "value",
+            MARCA AS "label"
+        FROM ${BD_SCHEMA}.NEU_MARCA
+        `
+        const result = await db.query(query);
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
+const getActividadReciente = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    try {
+        const query = `
+        SELECT
+            ID_MARCA AS "value",
+            MARCA AS "label"
+        FROM ${BD_SCHEMA}.NEU_MARCA
+        `
+        const result = await db.query(query);
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
+const getVehiculosPorNeumaticos = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    const usuario = req.session.user.usuario;
+    try {
+        const query = `
+            SELECT
+                VE.NUMPLA AS PLACA,
+                COUNT(NI.PLACA_ACTUAL) AS CANTIDAD_NEUMATICOS_INSTALADOS
+            FROM ${BD_SCHEMA}.PO_VEHICULO AS VE
+            INNER JOIN ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO AS USU
+                ON VE.SECOPE = USU.IDOPERACION
+            LEFT JOIN ${BD_SCHEMA}.PO_MODELO PMO
+                ON PMO."ID" = VE.IDMOD
+            LEFT JOIN ${BD_SCHEMA}.PO_MARCA PM
+                ON PM.ID = VE.IDMAR
+            LEFT JOIN ${BD_SCHEMA}.PO_TIPO PT
+                ON PT."ID" = VE.IDTIP
+            LEFT JOIN ${BD_SCHEMA}.PO_OPERACIONES POS
+                ON POS."ID" = USU.IDOPERACION
+            LEFT JOIN ${BD_SCHEMA}.PO_SUPERVISORES PSUP
+                ON PSUP.CODPLA = POS.IDSUP
+            LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
+                ON NI.PLACA_ACTUAL = VE.NUMPLA
+            WHERE TRIM(USU.CH_CODI_USUARIO) = ?
+            GROUP BY VE.NUMPLA
+            ORDER BY CANTIDAD_NEUMATICOS_INSTALADOS ASC
+        `;
+        const result = await db.query(query, [usuario]);
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
 // Exportar todo
 module.exports = {
     getPoNeumaticos,
@@ -373,5 +813,18 @@ module.exports = {
     getNeumaticoRecuperados: getTodosNeumaticos,
     getNeumaticosRecuperados: neumaticosRecuperados,
     getAllProyects: proyectos,
-    reubicarNeumaticosPorProyecto
+    reubicarNeumaticosPorProyecto,
+    verificarExistencia,
+    cantidadDeEstados,
+    getEstadoCritico,
+    getCantidadPorMarca,
+    getCantidadPorMedida,
+    getCantidadPorDiseno,
+    getDesgastePorMilKms,
+    getCodigoNeumaticosPorMilKms,
+    getAllDisenos,
+    getAllMedidas,
+    getAllMarcas,
+    getActividadReciente,
+    getVehiculosPorNeumaticos
 };

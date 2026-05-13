@@ -381,4 +381,30 @@ router.get('/recuperados-para-asignar', poNeumaticoController.getNeumaticosRecup
 
 router.get('/listar-proyectos', poNeumaticoController.getAllProyects);
 
+router.get('/verificar-existencia', poNeumaticoController.verificarExistencia)
+
+router.get('/cantidad-de-estados', poNeumaticoController.cantidadDeEstados)
+
+router.get('/estado-critico', poNeumaticoController.getEstadoCritico)
+
+router.get('/cantidad-por-marca', poNeumaticoController.getCantidadPorMarca)
+
+router.get('/cantidad-por-diseno', poNeumaticoController.getCantidadPorDiseno)
+
+router.get('/cantidad-por-medida', poNeumaticoController.getCantidadPorMedida)
+
+router.post('/desgaste-por-mil-kms', poNeumaticoController.getDesgastePorMilKms)
+
+router.get('/codigo-neumaticos-desgaste-por-mil-kms', poNeumaticoController.getCodigoNeumaticosPorMilKms)
+
+router.get('/todos-los-disenos', poNeumaticoController.getAllDisenos)
+
+router.get('/todas-las-medidas', poNeumaticoController.getAllMedidas)
+
+router.get('/todas-las-marcas', poNeumaticoController.getAllMarcas)
+
+router.get('/actividad-reciente', poNeumaticoController.getActividadReciente)
+
+router.get('/neumaticos-por-vehiculo', poNeumaticoController.getVehiculosPorNeumaticos)
+
 module.exports = router;

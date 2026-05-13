@@ -14,15 +14,17 @@ const buscarVehiculoPorPlaca = async (req, res) => {
     // Reconstruir usuario_super como en la lógica de negocio
     // SELECT enriquecido con joins y validación de usuario_super
 
-    // --CH_CODI_USUARIO AS USUARIO_SUPER, --CCHUMBIMUNI
     const query = `SELECT
         VE.NUMPLA AS PLACA,
         TRIM(PM.DESCRIPCION) AS MARCA,
         TRIM(PMO.DESMODGEN) AS MODELO,
         TRIM(PT.DESCRIPCION)  AS TIPO,
         TRIM(VE.COLOR) AS COLOR,
+        TRIM(VE.NROSER) AS NROSERIE,
+        TRIM(VE.NROMOT) AS NROMOTOR,
         VE.ANO,
         VE.KILOMETRAJE,
+        klm.KILOMETRAJE_GESNEU,
         POS.ID AS ID_OPERACION,
         TRIM(POS.DESCRIPCION) AS OPERACION,
         POS.IDSUP AS ID_SUPERVISOR,
@@ -32,13 +34,13 @@ const buscarVehiculoPorPlaca = async (req, res) => {
           WHEN 2 THEN 'CIUDAD'
           WHEN 3 THEN 'SEVERO'
           WHEN 4 THEN 'PENDIENTE'
-          ELSE 'SIN TIPO DE TRABAJO*'
+          ELSE 'SIN TIPO DE TRABAJO'
         END AS TIPO_TERRENO,
         CASE VE.ES_RETEN
           WHEN 0 THEN 'TITULAR'
           WHEN 1 THEN 'RETÉN'
           WHEN 2 THEN 'LOGISTICA'
-          ELSE 'SIN RETEN*'
+          ELSE 'SIN RETEN'
         END AS RETEN
       FROM ${BD_SCHEMA}.po_vehiculo AS VE
       INNER JOIN ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO AS USU
@@ -53,6 +55,11 @@ const buscarVehiculoPorPlaca = async (req, res) => {
         ON POS."ID" = USU.IDOPERACION
       LEFT JOIN ${BD_SCHEMA}.PO_SUPERVISORES PSUP
         ON PSUP.CODPLA = POS.IDSUP
+      LEFT JOIN (
+      SELECT PLACA, KILOMETRAJE AS KILOMETRAJE_GESNEU,
+        ROW_NUMBER() OVER (PARTITION BY PLACA ORDER BY ID DESC) AS RN
+        FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE WHERE FECHA_INSPECCION IS NOT NULL
+      ) klm ON klm.PLACA = VE.NUMPLA AND klm.RN = 1
       WHERE TRIM(VE.NUMPLA) = ? AND TRIM(USU.CH_CODI_USUARIO) = ?`;
 
     const result = await db.query(query, [placaLimpia, usuario]);

@@ -21,6 +21,7 @@ const listarNeumaticosAsignados = async (req, res) => {
                 ni.POSICION_ACTUAL AS POSICION_NEU,
                 np.CODIGO AS CODIGO_NEU,
                 nm.MARCA AS MARCA,
+                np.DISENO AS DISENO,
                 np.MEDIDA,
                 ni.REMANENTE_ACTUAL AS REMANENTE,
                 np.REMANENTE_INICIAL AS REMANENTE_ORIGINAL,

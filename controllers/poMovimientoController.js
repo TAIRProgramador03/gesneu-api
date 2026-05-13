@@ -80,41 +80,68 @@ const obtenerUltimosMovimientosPorCodigo = async (req, res) => {
 
 // Obtener el historial completo de movimientos de un neumático por su código
 const obtenerHistorialMovimientosPorCodigo = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+
     try {
-        const { codigo } = req.params;
-        const { usuario_super } = req.query;
+        const { codigo } = req.query;
+        // const { usuario_super } = req.query;
         if (!codigo || codigo.trim() === "") {
             return res.status(400).json({ error: "El código es requerido" });
         }
         const codigoTrim = codigo.trim();
 
         let query = `
-            SELECT 
-                d.ID_MOVIMIENTO, 
-                d.CODIGO_CASCO AS CODIGO, 
-                d.POSICION_NUEVA AS POSICION_NEU, 
-                -- TIPO_MOVIMIENTO debe mostrar la ACCIÓN (MONTAJE, INGRESO), no el estado
-                A.DESCRIPCION AS TIPO_MOVIMIENTO,
-                d.FECHA_SUCESO AS FECHA_MOVIMIENTO, 
-                d.ODOMETRO_VEHICULO AS KILOMETRO, 
-                d.PLACA, 
-                d.SUPERVISOR AS USUARIO_SUPER,
-                d.OBSERVACION
-            FROM ${BD_SCHEMA}.NEU_DETALLE d
-            LEFT JOIN ${BD_SCHEMA}.NEU_ACCION A ON d.ID_ACCION = A.ID_ACCION
-            WHERE d.CODIGO_CASCO = ?`;
+            SELECT
+                nm."ID"                    AS ID_MOVIMIENTO,
+                np.CODIGO                  AS CODIGO_NEUMATICO,
+                nm.PLACA                   AS PLACA_VEHICULO,
+                nm.PROYECTO                AS TALLER_ASIGNADO,
+                na.ID_ACCION               AS ID_ACCION_REALIZADA,
+                na.DESCRIPCION             AS ACCION_REALIZADA,
+                nm.POSICION_ANTERIOR       AS POSICION_ANTERIOR_EN_VEHICULO,
+                nm.POSICION_NUEVA          AS POSICION_NUEVA_EN_VEHICULO,
+                nm.REMANENTE_MEDIDO        AS REMANENTE_MEDIDO_MM,
+                nm.PRESION_MEDIDA          AS PRESION_AIRE_PSI,
+                nm.TORQUE_APLICADO         AS TORQUE_APLICADO_NM,
+                nm.KM_RECORRIDOS_ETAPA     AS KM_RECORRIDOS_EN_ETAPA,
+                nm.PORCENTAJE_VIDA         AS PORCENTAJE_VIDA_UTIL,
+                nm.OBS                     AS OBSERVACION,
+                nm.USUARIO_REGISTRADOR     AS USUARIO_REGISTRADOR,
+                CASE
+                    WHEN na.ID_ACCION = 2 THEN nm.FECHA_ASIGNACION -- MONTAJE
+                    WHEN na.ID_ACCION = 4 THEN nm.FECHA_RECUPERADO -- ROTACION
+                    WHEN na.ID_ACCION = 5 THEN nm.FECHA_RECUPERADO -- BAJA
+                    WHEN na.ID_ACCION = 6 THEN nm.FECHA_RECUPERADO -- RECUPERADO
+                    WHEN na.ID_ACCION = 7 THEN nm.FECHA_INSPECCION -- INSPECCION
+                    ELSE NULL
+                END                        AS FECHA_MOVIMIENTO,
+                nm.FECHA_MOVIMIENTO        AS FECHA_REGISTRO_MOVIMIENTO
+            FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS nm
+            INNER JOIN ${BD_SCHEMA}.NEU_PADRON np
+                ON np."ID" = nm.ID_NEUMATICO
+            INNER JOIN ${BD_SCHEMA}.NEU_ACCION na
+                ON na.ID_ACCION = nm.ID_ACCION
+            WHERE np.CODIGO = ?
+            ORDER BY nm."ID" ASC
+        `;
 
-        const params = [codigoTrim];
+        // extraer el id de la accion -> ID_ACCION
+        // dependiendo del id de la accion sacar la fecha -> 
 
-        if (usuario_super) {
-            query += ` AND UPPER(TRIM(d.SUPERVISOR)) = UPPER(?)`;
-            params.push(usuario_super.trim());
-        }
 
-        query += ` ORDER BY d.ID_MOVIMIENTO ASC, d.FECHA_SUCESO ASC`;
+
+
+        // const params = [codigoTrim];
+
+        // if (usuario_super) {
+        //     query += ` AND UPPER(TRIM(d.SUPERVISOR)) = UPPER(?)`;
+        //     params.push(usuario_super.trim());
+        // }
+
+        // query += ` ORDER BY d.ID_MOVIMIENTO ASC, d.FECHA_SUCESO ASC`;
         // ID_MOVIMIENTO es Identity y cronológico, mejor para ordenar que solo fecha si ocurren en el mismo segundo.
 
-        const result = await db.query(query, params);
+        const result = await db.query(query, [codigoTrim]);
         res.json(result);
     } catch (error) {
         console.error("Error al obtener historial de movimientos (Refactored):", error);
@@ -122,8 +149,65 @@ const obtenerHistorialMovimientosPorCodigo = async (req, res) => {
     }
 };
 
+
+const obtenerHistorialMovimientosPorPlaca = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    try {
+        const { placa } = req.query;
+        if (!placa || placa.trim() === "") return res.status(400).json({ error: "La placa es requerida" });
+        const placaTrim = placa.trim();
+
+        let query = `
+            SELECT
+                nm."ID"                    AS ID_MOVIMIENTO,
+                np.CODIGO                  AS CODIGO_NEUMATICO,
+                nm.PLACA                   AS PLACA_VEHICULO,
+                nm.PROYECTO                AS TALLER_ASIGNADO,
+                na.ID_ACCION               AS ID_ACCION_REALIZADA,
+                na.DESCRIPCION             AS ACCION_REALIZADA,
+                nm.POSICION_ANTERIOR       AS POSICION_ANTERIOR_EN_VEHICULO,
+                nm.POSICION_NUEVA          AS POSICION_NUEVA_EN_VEHICULO,
+                nm.REMANENTE_MEDIDO        AS REMANENTE_MEDIDO_MM,
+                nm.PRESION_MEDIDA          AS PRESION_AIRE_PSI,
+                nm.TORQUE_APLICADO         AS TORQUE_APLICADO_NM,
+                nm.KM_RECORRIDOS_ETAPA     AS KM_RECORRIDOS_EN_ETAPA,
+                nm.PORCENTAJE_VIDA         AS PORCENTAJE_VIDA_UTIL,
+                nm.OBS                     AS OBSERVACION,
+                nm.USUARIO_REGISTRADOR     AS USUARIO_REGISTRADOR,
+                CASE
+                    WHEN na.ID_ACCION = 2 THEN nm.FECHA_ASIGNACION -- MONTAJE
+                    WHEN na.ID_ACCION = 4 THEN nm.FECHA_RECUPERADO -- ROTACION
+                    WHEN na.ID_ACCION = 5 THEN nm.FECHA_RECUPERADO -- BAJA
+                    WHEN na.ID_ACCION = 6 THEN nm.FECHA_RECUPERADO -- RECUPERADO
+                    WHEN na.ID_ACCION = 7 THEN nm.FECHA_INSPECCION -- INSPECCION
+                    ELSE NULL
+                END                        AS FECHA_MOVIMIENTO,
+                nm.FECHA_MOVIMIENTO        AS FECHA_REGISTRO_MOVIMIENTO,
+                nv.KILOMETRAJE AS CAMBIO_KILOMETRAJE,
+                nv.TIPO_TERRENO AS TIPO_TERRENO,
+                nv.RETEN AS CONDICION
+            FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS nm
+            INNER JOIN ${BD_SCHEMA}.NEU_PADRON np
+                ON np."ID" = nm.ID_NEUMATICO
+            INNER JOIN ${BD_SCHEMA}.NEU_ACCION na
+                ON na.ID_ACCION = nm.ID_ACCION
+            LEFT JOIN ${BD_SCHEMA}.NEU_VKILOMETRAJE nv 
+                ON nv.PLACA = nm.PLACA AND
+                nv.FECHA_INSPECCION = nm.FECHA_INSPECCION
+            WHERE nm.PLACA = ?
+            ORDER BY nm."ID" DESC`;
+
+        const result = await db.query(query, [placaTrim]);
+        res.json(result);
+    } catch (error) {
+        console.error("Error al obtener historial de movimientos de la placa (Refactored):", error);
+        res.status(500).json({ error: "Error al obtener historial de movimientos de la placa" });
+    }
+}
+
 module.exports = {
     listarUltimosMovimientosPorPlaca,
     obtenerUltimosMovimientosPorCodigo,
     obtenerHistorialMovimientosPorCodigo,
+    obtenerHistorialMovimientosPorPlaca
 };

@@ -319,8 +319,6 @@ const getNeumaticosPorInspeccion = async (req, res) => {
 
         const { PLACA, FECHA_INSPECCION } = req.query;
 
-        console.log({ PLACA, FECHA_INSPECCION })
-
         if (!PLACA || !FECHA_INSPECCION) {
             return res.status(400).json({ error: "Falta el parámetro: placa es requerido" });
         }
@@ -333,6 +331,8 @@ const getNeumaticosPorInspeccion = async (req, res) => {
                 NM.PLACA,
                 NM.POSICION_NUEVA AS POSICION,
                 NM.REMANENTE_MEDIDO AS REMANENTE,
+                NM.PRESION_MEDIDA AS PRESION,
+                NM.TORQUE_APLICADO AS TORQUE,
                 NM.KM_RECORRIDOS_ETAPA AS KM_RECORRIDO,
                 NM.OBS,
                 NM.PORCENTAJE_VIDA

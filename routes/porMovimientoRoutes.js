@@ -48,7 +48,7 @@ const poMovimientoController = require("../controllers/poMovimientoController");
  *       500:
  *         description: Error al obtener historial de movimientos por código
  */
-router.get("/historial-codigo/:codigo", poMovimientoController.obtenerHistorialMovimientosPorCodigo);
+router.get("/historial-codigo", poMovimientoController.obtenerHistorialMovimientosPorCodigo);
 
 /**
  * @swagger
@@ -227,5 +227,8 @@ router.get("/ultimos/:placa", poMovimientoController.listarUltimosMovimientosPor
  *         description: Error al obtener últimos movimientos por código
  */
 router.get("/ultimos-codigo/:codigo", poMovimientoController.obtenerUltimosMovimientosPorCodigo);
+
+
+router.get("/historial-placa", poMovimientoController.obtenerHistorialMovimientosPorPlaca)
 
 module.exports = router;

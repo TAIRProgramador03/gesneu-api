@@ -61,6 +61,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
 
         let insertados = 0;
         let errores = [];
+        let codigosInsertados = [];
 
         for (const fila of data) {
 
@@ -157,7 +158,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
                             }
                             if (typeof valor === 'string') {
                                 const v = valor.trim();
-                                if (/^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
+                                if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v)) {
                                     const [dia, mes, anio] = v.split('/');
                                     return `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
                                 }
@@ -176,7 +177,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
                             }
                             if (typeof valor === 'string') {
                                 const v = valor.trim();
-                                if (/^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
+                                if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v)) {
                                     const [dia, mes, anio] = v.split('/');
                                     return `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
                                 }
@@ -231,6 +232,7 @@ const cargarPadronDesdeExcel = async (req, res) => {
                 await db.query(queryInformation, paramsInformation);
 
                 insertados++;
+                codigosInsertados.push(filaLimpia.CODIGO);
             } catch (error) {
                 errores.push({ fila: codigo || '', mensaje: error.message || "Error desconocido" });
             }
@@ -242,7 +244,11 @@ const cargarPadronDesdeExcel = async (req, res) => {
                 ? "Carga no realizada. Todos los registros tienen errores."
                 : `Carga parcial: ${insertados} insertados de ${data.length} registros.`;
 
-        return res.status(200).json({ mensaje: mensajeFinal, total: data.length, insertados, errores });
+        const muestra = codigosInsertados.length <= 4
+            ? codigosInsertados
+            : [...codigosInsertados.slice(0, 2), ...codigosInsertados.slice(-2)];
+
+        return res.status(200).json({ mensaje: mensajeFinal, total: data.length, insertados, errores, muestra });
     } catch (err) {
         console.error("Error general:", err);
         res.status(500).json({ error: "Error al procesar el padrón", detalle: err.message });

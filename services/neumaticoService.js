@@ -29,6 +29,7 @@ const neumaticoService = {
                 SELECT
                     np.ID AS ID_NEUMATICO,
                     np.CODIGO AS CODIGO,
+                    nm.ID_MARCA,
                     nm.MARCA,
                     np.MEDIDA,
                     np.DISENO AS DISEÑO,
