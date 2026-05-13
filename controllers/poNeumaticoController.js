@@ -765,27 +765,29 @@ const getVehiculosPorNeumaticos = async (req, res) => {
     const usuario = req.session.user.usuario;
     try {
         const query = `
-            SELECT
-                VE.NUMPLA AS PLACA,
-                COUNT(NI.PLACA_ACTUAL) AS CANTIDAD_NEUMATICOS_INSTALADOS
-            FROM ${BD_SCHEMA}.PO_VEHICULO AS VE
-            INNER JOIN ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO AS USU
-                ON VE.SECOPE = USU.IDOPERACION
-            LEFT JOIN ${BD_SCHEMA}.PO_MODELO PMO
-                ON PMO."ID" = VE.IDMOD
-            LEFT JOIN ${BD_SCHEMA}.PO_MARCA PM
-                ON PM.ID = VE.IDMAR
-            LEFT JOIN ${BD_SCHEMA}.PO_TIPO PT
-                ON PT."ID" = VE.IDTIP
-            LEFT JOIN ${BD_SCHEMA}.PO_OPERACIONES POS
-                ON POS."ID" = USU.IDOPERACION
-            LEFT JOIN ${BD_SCHEMA}.PO_SUPERVISORES PSUP
-                ON PSUP.CODPLA = POS.IDSUP
-            LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
-                ON NI.PLACA_ACTUAL = VE.NUMPLA
-            WHERE TRIM(USU.CH_CODI_USUARIO) = ?
-            GROUP BY VE.NUMPLA
-            ORDER BY CANTIDAD_NEUMATICOS_INSTALADOS ASC
+        SELECT
+            VE.NUMPLA AS PLACA,
+            TRIM(PMO.DESCRIPCION) AS MODELO,
+            TRIM(PM.DESCRIPCION) AS MARCA,
+            COUNT(NI.PLACA_ACTUAL) AS CANTIDAD_NEUMATICOS_INSTALADOS
+        FROM ${BD_SCHEMA}.PO_VEHICULO AS VE
+        INNER JOIN ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO AS USU
+            ON VE.SECOPE = USU.IDOPERACION
+        LEFT JOIN ${BD_SCHEMA}.PO_MODELO PMO
+            ON PMO."ID" = VE.IDMOD
+        LEFT JOIN ${BD_SCHEMA}.PO_MARCA PM
+            ON PM.ID = VE.IDMAR
+        LEFT JOIN ${BD_SCHEMA}.PO_TIPO PT
+            ON PT."ID" = VE.IDTIP
+        LEFT JOIN ${BD_SCHEMA}.PO_OPERACIONES POS
+            ON POS."ID" = USU.IDOPERACION
+        LEFT JOIN ${BD_SCHEMA}.PO_SUPERVISORES PSUP
+            ON PSUP.CODPLA = POS.IDSUP
+        LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
+            ON NI.PLACA_ACTUAL = VE.NUMPLA
+        WHERE TRIM(USU.CH_CODI_USUARIO) = ?
+        GROUP BY VE.NUMPLA, PMO.DESCRIPCION, PM.DESCRIPCION
+        ORDER BY CANTIDAD_NEUMATICOS_INSTALADOS ASC
         `;
         const result = await db.query(query, [usuario]);
         res.json(result);
