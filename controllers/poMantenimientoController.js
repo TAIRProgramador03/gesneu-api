@@ -373,8 +373,60 @@ const desasignarConReemplazo = async (req, res) => {
             });
         }
 
-        console.log({ desasignaciones })
-        console.log({ asignaciones })
+        const bajasDefinitivas = desasignaciones.filter(d => d.TIPO_MOVIMIENTO === 'BAJA DEFINITIVA');
+
+        if (bajasDefinitivas.length > 0) {
+            const movimientosPorPosicion = (() => {
+                const map = new Map();
+                bajasDefinitivas.forEach(({ POSICION, CODIGO }) => {
+                    if (!map.has(POSICION)) map.set(POSICION, { pos: POSICION });
+                    map.get(POSICION).baja = CODIGO;
+                });
+                asignaciones.forEach(({ Posicion, CodigoNeumatico, Placa }) => {
+                    if (!map.has(Posicion)) map.set(Posicion, { pos: Posicion });
+                    map.get(Posicion).nuevo = CodigoNeumatico;
+                    map.get(Posicion).placa = Placa;
+                });
+                return [...map.values()];
+            })();
+
+            const sqlVerificarSalidas = `
+                SELECT
+                    SINVSEH.MHALMA,
+                    SINVSEH.MHCMOV,
+                    SINVSEH.MHTMOV,
+                    SINVSEH.MHCOMP,
+                    SINVSE.MDCORR,
+                    SINVSE.MDFECH,
+                    SINVSEH.MHREF3,
+                    SINVSEH.MHREF6,
+                    SINVSE.MDDRE7
+                FROM ${BD_SCHEMA}.TMOVD AS SINVSE
+                INNER JOIN ${BD_SCHEMA}.TMOVH AS SINVSEH
+                    ON SINVSEH.MHCMOV = SINVSE.MDCMOV
+                    AND SINVSEH.MHTMOV = SINVSE.MDTMOV
+                    AND SINVSEH.MHALMA = SINVSE.MDALMA
+                    AND SINVSEH.MHCOMP = SINVSE.MDCOMP
+                    AND TRIM(SINVSEH.MHREF3) = ?
+                    AND TRIM(SINVSEH.MHREF6) LIKE '%NEU'
+                WHERE SINVSE.MDCMOV = 'S' AND SINVSE.MDTMOV = '60'
+                AND SINVSE.MDCOAR LIKE '%1400%'
+                AND TRIM(SINVSE.MDDRE7) = ?
+                ORDER BY SINVSE.MDFECH DESC
+            `;
+
+            for (const mov of movimientosPorPosicion) {
+                const nuevoUsado = `${mov.nuevo}-${mov.b1aja}`;
+                const rows = await db.query(sqlVerificarSalidas, [mov.placa, nuevoUsado]);
+                if (rows.length === 0) {
+                    return res.status(400).json({
+                        error: `No se encontró salida S60 para posición ${mov.pos}`,
+                        detalle: `Nuevo: ${mov.nuevo}\nBaja: ${mov.baja}`
+                    });
+                }
+            }
+        }
+
 
         // VALIDACIÓN GLOBAL: Verificar que después de TODO, ninguna posición quede vacía
         if (desasignaciones.length > 0) {

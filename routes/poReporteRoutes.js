@@ -125,4 +125,8 @@ router.get('/asignados-por-mes', poReporteController.getAsignadosPorMes);
 // Endpoint para inspecciones de neumáticos por rango de fechas
 router.get('/neu-inspeccion-por-fechas', poReporteController.getNeuInspeccionPorFechas);
 
+
+
+router.get('/bajas', poReporteController.getMovimientosDeNeumaticosEnBaja);
+
 module.exports = router;

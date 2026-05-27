@@ -51,12 +51,11 @@ const neumaticoService = {
                     ne.CODIGO_INTERNO AS TIPO_MOVIMIENTO,
                     TRIM(ni.PLACA_ACTUAL) AS PLACA,
                     ni.POSICION_ACTUAL AS POSICION_NEU,
-
                     ni.REMANENTE_ACTUAL AS REMANENTE,
                     ni.PRESION_ACTUAL AS PRESION_AIRE,
                     ni.TORQUE_ACTUAL,
-                    ni.KM_TOTAL_VIDA AS KILOMETRO
-
+                    ni.KM_TOTAL_VIDA AS KILOMETRO,
+                    nmprimer.ODOMETRO_VEHICULO AS PRIMER_ODOMETRO
                 FROM ${BD_SCHEMA}.NEU_PADRON np
                 LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
                     ON ni.ID_NEUMATICO = np.ID
@@ -70,7 +69,13 @@ const neumaticoService = {
                     ON TRIM(u.CH_CODI_USUARIO) = (?)
                 INNER JOIN ${BD_SCHEMA}.PO_TALLER t
                     ON u.ID_TALLER = t.ID
-                    AND t.DESCRIPCION = ni.PROYECTO_ACTUAL`;
+                    AND t.DESCRIPCION = ni.PROYECTO_ACTUAL
+                LEFT JOIN (
+                    SELECT ID_NEUMATICO, ODOMETRO_VEHICULO,
+                    ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID ASC) AS RN1
+                    FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 2
+                ) nmprimer ON nmprimer.ID_NEUMATICO = np.ID AND nmprimer.RN1 = 1
+                `;
 
         const params = [];
         if (filtroSupervisor) {
