@@ -416,7 +416,7 @@ const desasignarConReemplazo = async (req, res) => {
             `;
 
             for (const mov of movimientosPorPosicion) {
-                const nuevoUsado = `${mov.nuevo}-${mov.b1aja}`;
+                const nuevoUsado = `${mov.nuevo}-${mov.baja}`;
                 const rows = await db.query(sqlVerificarSalidas, [mov.placa, nuevoUsado]);
                 if (rows.length === 0) {
                     return res.status(400).json({

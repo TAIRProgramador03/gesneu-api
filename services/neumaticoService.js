@@ -55,7 +55,8 @@ const neumaticoService = {
                     ni.PRESION_ACTUAL AS PRESION_AIRE,
                     ni.TORQUE_ACTUAL,
                     ni.KM_TOTAL_VIDA AS KILOMETRO,
-                    nmprimer.ODOMETRO_VEHICULO AS PRIMER_ODOMETRO
+                    nmprimer.ODOMETRO_VEHICULO AS PRIMER_ODOMETRO,
+                    nmbaja.FECHA_RECUPERADO AS FECHA_BAJA
                 FROM ${BD_SCHEMA}.NEU_PADRON np
                 LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
                     ON ni.ID_NEUMATICO = np.ID
@@ -75,6 +76,11 @@ const neumaticoService = {
                     ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID ASC) AS RN1
                     FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 2
                 ) nmprimer ON nmprimer.ID_NEUMATICO = np.ID AND nmprimer.RN1 = 1
+                LEFT JOIN (
+                    SELECT ID_NEUMATICO, FECHA_RECUPERADO,
+                    ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID DESC) AS RN1
+                    FROM SPEED400AT.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
+                ) nmbaja ON nmbaja.ID_NEUMATICO = np.ID AND nmbaja.RN1 = 1
                 `;
 
         const params = [];

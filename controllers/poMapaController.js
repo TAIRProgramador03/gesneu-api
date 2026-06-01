@@ -37,8 +37,29 @@ const contarNeumaticos = async (req, res) => {
     }
 };
 
+const todosLosTalleres = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    try {
+        const usuario = req.session.user.usuario;
+        let query = `
+            SELECT
+                t.DESCRIPCION AS "value",
+                t.DESCRIPCION AS "label"
+            FROM ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+            INNER JOIN ${BD_SCHEMA}.PO_TALLER t
+                ON u.ID_TALLER = t.ID
+            WHERE TRIM(u.CH_CODI_USUARIO) = ?
+        `
+        const result = await db.query(query, [usuario]);
+        res.json(result);
+    } catch (error) {
+        console.error('Error al obtener los talleres del usuario:', error);
+        res.status(500).json({ error: 'Error al obtener los talleres del usuario' });
+    }
+}
 
 // Exportar todo
 module.exports = {
     contarNeumaticos,
+    todosLosTalleres,
 };

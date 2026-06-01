@@ -425,6 +425,15 @@ const verificarExistencia = async (req, res) => {
 const cantidadDeEstados = async (req, res) => {
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
     const usuario = req.session.user.usuario;
+
+    if (!req.query.filtro) return res.status(400).json({ error: 'Codigo de filtro es requerido' });
+    if (!req.query.taller) return res.status(400).json({ error: 'Codigo de taller es requerido' });
+
+    const { filtro, taller } = req.query
+    let condicional = ``;
+    if (filtro === 'recuperados') condicional = `AND ni.ES_RECUPERADO = TRUE`
+    else condicional = `AND ni.ID_ESTADO = ${filtro === 'disponibles' ? '1' : filtro === 'asignados' ? '2' : filtro === 'bajas' ? '3' : '0'}`
+    let queryTaller = `AND ni.PROYECTO_ACTUAL = '${taller}'`;
     try {
         let query = `
         SELECT
@@ -434,7 +443,7 @@ const cantidadDeEstados = async (req, res) => {
             COUNT(*) AS NEUMATICOS_TOTALES
         FROM ${BD_SCHEMA}.NEU_PADRON np
         LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
-            ON ni.ID_NEUMATICO = np.ID
+            ON ni.ID_NEUMATICO = np.ID ${filtro !== 'todos' ? condicional : ''} ${taller !== 'todos' ? queryTaller : ''}
         INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
             ON TRIM(u.CH_CODI_USUARIO) = ?
         INNER JOIN ${BD_SCHEMA}.PO_TALLER t
@@ -452,8 +461,13 @@ const cantidadDeEstados = async (req, res) => {
 
 
 const getEstadoCritico = async (req, res) => {
+
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    if (!req.query.taller) return res.status(400).json({ error: 'Codigo de taller es requerido' });
+
     const usuario = req.session.user.usuario;
+    const { taller } = req.query
+    let queryTaller = `AND ni.PROYECTO_ACTUAL = '${taller}'`;
 
     try {
         let query = `
@@ -467,10 +481,11 @@ const getEstadoCritico = async (req, res) => {
             ni.PRESION_ACTUAL AS PRESION_NEUMATICO,
             ni.TORQUE_ACTUAL AS TORQUE_NEUMATICO,
             ni.REMANENTE_ACTUAL AS REMANENTE_NEUMATICO,
-            ni.PORCENTAJE_VIDA AS PORCENTAJE_VIDA
+            ni.PORCENTAJE_VIDA AS PORCENTAJE_VIDA,
+            ni.PROYECTO_ACTUAL AS TALLER_ACTUAL
         FROM ${BD_SCHEMA}.NEU_PADRON np
         LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
-            ON ni.ID_NEUMATICO = np.ID
+            ON ni.ID_NEUMATICO = np.ID ${taller !== 'todos' ? queryTaller : ''}
         INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
             ON TRIM(u.CH_CODI_USUARIO) = ?
         INNER JOIN ${BD_SCHEMA}.PO_TALLER t
@@ -495,7 +510,16 @@ const getEstadoCritico = async (req, res) => {
 const getCantidadPorMarca = async (req, res) => {
 
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    if (!req.query.filtro) return res.status(400).json({ error: 'Codigo de filtro es requerido' });
+    if (!req.query.taller) return res.status(400).json({ error: 'Codigo de taller es requerido' });
+
     const usuario = req.session.user.usuario;
+
+    const { filtro, taller } = req.query
+    let condicional = ``;
+    if (filtro === 'recuperados') condicional = `AND ni.ES_RECUPERADO = TRUE`
+    else condicional = `AND ni.ID_ESTADO = ${filtro === 'disponibles' ? '1' : filtro === 'asignados' ? '2' : filtro === 'bajas' ? '3' : '0'}`
+    let queryTaller = `AND ni.PROYECTO_ACTUAL = '${taller}'`;
 
     try {
         let query = `
@@ -504,7 +528,7 @@ const getCantidadPorMarca = async (req, res) => {
                 COUNT(*) AS CANTIDAD_NEUMATICOS
             FROM ${BD_SCHEMA}.NEU_PADRON np
             LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
-                ON ni.ID_NEUMATICO = np.ID
+                ON ni.ID_NEUMATICO = np.ID ${filtro !== 'todos' ? condicional : ''} ${taller !== 'todos' ? queryTaller : ''}
             INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
                 ON TRIM(u.CH_CODI_USUARIO) = ?
             INNER JOIN ${BD_SCHEMA}.PO_TALLER t
@@ -524,7 +548,16 @@ const getCantidadPorMarca = async (req, res) => {
 
 const getCantidadPorDiseno = async (req, res) => {
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    if (!req.query.filtro) return res.status(400).json({ error: 'Codigo de filtro es requerido' });
+    if (!req.query.taller) return res.status(400).json({ error: 'Codigo de taller es requerido' });
+
     const usuario = req.session.user.usuario;
+    const { filtro, taller } = req.query
+    let condicional = ``;
+    if (filtro === 'recuperados') condicional = `AND ni.ES_RECUPERADO = TRUE`
+    else condicional = `AND ni.ID_ESTADO = ${filtro === 'disponibles' ? '1' : filtro === 'asignados' ? '2' : filtro === 'bajas' ? '3' : '0'}`
+    let queryTaller = `AND ni.PROYECTO_ACTUAL = '${taller}'`;
+
     try {
         let query = `
             SELECT
@@ -532,7 +565,7 @@ const getCantidadPorDiseno = async (req, res) => {
                 COUNT(*) AS CANTIDAD_NEUMATICOS
             FROM ${BD_SCHEMA}.NEU_PADRON np
             LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
-                ON ni.ID_NEUMATICO = np.ID
+                ON ni.ID_NEUMATICO = np.ID ${filtro !== 'todos' ? condicional : ''} ${taller !== 'todos' ? queryTaller : ''}
             INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
                 ON TRIM(u.CH_CODI_USUARIO) = ?
             INNER JOIN ${BD_SCHEMA}.PO_TALLER t
@@ -552,7 +585,16 @@ const getCantidadPorDiseno = async (req, res) => {
 const getCantidadPorMedida = async (req, res) => {
 
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    if (!req.query.filtro) return res.status(400).json({ error: 'Codigo de filtro es requerido' });
+    if (!req.query.taller) return res.status(400).json({ error: 'Codigo de taller es requerido' });
+
     const usuario = req.session.user.usuario;
+
+    const { filtro, taller } = req.query
+    let condicional = '';
+    if (filtro === 'recuperados') condicional = `AND ni.ES_RECUPERADO = TRUE`
+    else condicional = `AND ni.ID_ESTADO = ${filtro === 'disponibles' ? '1' : filtro === 'asignados' ? '2' : filtro === 'bajas' ? '3' : '0'}`
+    let queryTaller = `AND ni.PROYECTO_ACTUAL = '${taller}'`;
 
     try {
         let query = `
@@ -564,7 +606,7 @@ const getCantidadPorMedida = async (req, res) => {
                 COUNT(*) AS CANTIDAD_NEUMATICOS
             FROM ${BD_SCHEMA}.NEU_PADRON np
             LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
-                ON ni.ID_NEUMATICO = np.ID
+                ON ni.ID_NEUMATICO = np.ID ${filtro !== 'todos' ? condicional : ''} ${taller !== 'todos' ? queryTaller : ''}
             INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
                 ON TRIM(u.CH_CODI_USUARIO) = ?
             INNER JOIN ${BD_SCHEMA}.PO_TALLER t
@@ -585,7 +627,7 @@ const getDesgastePorMilKms = async (req, res) => {
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
     const usuario = req.session.user.usuario;
 
-    const { valuesToSend } = req.body
+    const { valuesToSend, taller } = req.body
     const placeholders = valuesToSend.map(() => '?').join(',');
 
     try {
@@ -614,7 +656,8 @@ const getDesgastePorMilKms = async (req, res) => {
                 END AS KM_POR_REMAMENTE,
                 NP.COSTO_INICIAL AS COSTO_NEUMATICO,
                 nmbaja.TIPO_BAJA,
-                nmbaja.FECHA_DE_BAJA
+                nmbaja.FECHA_DE_BAJA,
+                NI.PROYECTO_ACTUAL AS TALLER_ACTUAL
             FROM ${BD_SCHEMA}.NEU_INFORMACION NI
             LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
                 ON NP.ID = NI.ID_NEUMATICO
@@ -636,6 +679,7 @@ const getDesgastePorMilKms = async (req, res) => {
                 FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
             ) nmbaja ON nmbaja.ID_NEUMATICO = np.ID AND nmbaja.RN1 = 1
             WHERE NI.ID_ESTADO = 3 AND NI.KM_TOTAL_VIDA >= 1
+            ${taller != 'todos' ? `AND NI.PROYECTO_ACTUAL = '${taller}' ` : ''}
         `;
 
         if (valuesToSend.length >= 1) query += ` AND NI.ID_NEUMATICO IN (${placeholders})`
@@ -653,7 +697,10 @@ const getDesgastePorMilKms = async (req, res) => {
 
 const getCodigoNeumaticosPorMilKms = async (req, res) => {
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    if (!req.query.taller) return res.status(400).json({ error: 'Codigo de taller es requerido' });
     const usuario = req.session.user.usuario;
+
+    const { taller } = req.query
 
     try {
         let query = `
@@ -683,6 +730,7 @@ const getCodigoNeumaticosPorMilKms = async (req, res) => {
             FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
         ) nmbaja ON nmbaja.ID_NEUMATICO = np.ID AND nmbaja.RN1 = 1
         WHERE NI.ID_ESTADO = 3 AND NI.KM_TOTAL_VIDA >= 1
+        ${taller !== 'todos' ? ` AND NI.PROYECTO_ACTUAL = '${taller}'` : ''}
         ORDER BY nmbaja.FECHA_DE_BAJA DESC`;
 
         const result = await db.query(query, [usuario]);
