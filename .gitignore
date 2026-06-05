@@ -31,6 +31,9 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
+# Sesiones en disco
+sessions/
+
 # Runtime data
 pids
 *.pid

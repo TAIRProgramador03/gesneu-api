@@ -3,6 +3,7 @@ const cors = require("cors");
 require("dotenv").config();
 const db = require("./config/db");
 const session = require("express-session");
+const FileStore = require("session-file-store")(session);
 
 const poNeumaticoRoutes = require("./routes/poNeumaticoRoutes");
 const poSupervisoresRoutes = require("./routes/poSupervisorRoutes");
@@ -65,16 +66,24 @@ const swaggerOptions = {
 const swaggerSpec = swaggerJSDoc(swaggerOptions);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// Configura express-session
+// Configura express-session con FileStore (persiste sesiones en disco)
 app.use(
   session({
-    secret: process.env.SESSION_SECRET, // Usar variable de entorno
+    store: new FileStore({
+      path: "./sessions",
+      ttl: 8 * 60 * 60,        // TTL en segundos (igual que cookie.maxAge)
+      retries: 0,               // sin reintentos — sesión inexistente = archivo no existe, punto
+      reapInterval: 60 * 60,    // borra archivos de sesión expirados cada hora
+      logFn: () => {},          // silencia warnings de sesiones expiradas/fantasma
+    }),
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: false, // true si usas HTTPS
+      secure: false,
       httpOnly: true,
       sameSite: "lax",
+      maxAge: 8 * 60 * 60 * 1000, // 8 horas en ms
     },
   })
 );
@@ -135,10 +144,31 @@ app.use("/api/po-movimiento", porMovimientoRoutes);
 app.use("/api", poMantenimientoRoutes);
 app.use("/api/po-reportes", poReporteRoutes);
 app.use("/api/mapa", poMapaRoutes)
+app.get('/api/health', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const dbOk = await db.validate();
+  if (dbOk) {
+    res.status(200).json({ status: 'ok' });
+  } else {
+    res.status(503).json({ status: 'db_down' });
+  }
+});
+
+// Error middleware — debe ir DESPUÉS de todas las rutas
+// Captura errores de DB y cualquier error no manejado que llegue vía next(err)
+app.use((err, req, res, next) => {
+  if (err.code === 'DB_UNAVAILABLE') {
+    return res.status(503).json({ error: 'Base de datos no disponible' });
+  }
+  console.error('❌ Error no capturado:', err.message || err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
 
 // Servidor
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, "0.0.0.0", async () => {
-  console.log(`🟢 Servidor corriendo en http://0.0.0.0:${PORT}`);
+  console.log(`[${new Date().toISOString()}] 🟢 Servidor ARRANCÓ en http://0.0.0.0:${PORT} — PID ${process.pid}`);
   await db.connect();
 });
