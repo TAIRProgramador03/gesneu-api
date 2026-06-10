@@ -631,6 +631,9 @@ const getDesgastePorMilKms = async (req, res) => {
     const placeholders = valuesToSend.map(() => '?').join(',');
 
     try {
+
+
+
         let query = `
             SELECT
                 NP."ID" AS ID_NEUMATICO,
@@ -642,45 +645,109 @@ const getDesgastePorMilKms = async (req, res) => {
                 NP.REMANENTE_INICIAL AS REMANENTE_INCIAL,
                 ri.REMANENTE_MONTADO AS REMANENTE_MONTADO,
                 NI.REMANENTE_ACTUAL AS REMANENTE_ACTUAL,
-                CASE WHEN KM_TOTAL_VIDA = 0 THEN 0
-                    WHEN KM_TOTAL_VIDA >= 1 THEN CAST((((ri.REMANENTE_MONTADO - NI.REMANENTE_ACTUAL) / NI.KM_TOTAL_VIDA) * 1000) AS DECIMAL(10, 2))
-                    ELSE 0
+                CASE
+                    WHEN COALESCE(NI.KM_TOTAL_VIDA, 0) = 0 THEN 0
+                    WHEN COALESCE(ri.REMANENTE_MONTADO, 0) = 0 THEN 0
+                    ELSE CAST(
+                        (CAST(ri.REMANENTE_MONTADO - NI.REMANENTE_ACTUAL AS DECIMAL(14,4))
+                        / CAST(NI.KM_TOTAL_VIDA AS DECIMAL(14,4)))
+                        * CAST(1000 AS DECIMAL(14,4))
+                    AS DECIMAL(14, 2))
                 END AS DESGASTE_POR_1000KM,
-                CASE WHEN KM_TOTAL_VIDA = 0 THEN 0
-                    WHEN KM_TOTAL_VIDA >= 1 THEN CAST((NP.COSTO_INICIAL / NI.KM_TOTAL_VIDA) AS DECIMAL(10, 5))
-                    ELSE 0
+                CASE
+                    WHEN COALESCE(NI.KM_TOTAL_VIDA, 0) = 0 THEN 0
+                    WHEN COALESCE(NP.COSTO_INICIAL, 0) = 0 THEN 0
+                    ELSE CAST(
+                        CAST(NP.COSTO_INICIAL AS DECIMAL(14,4))
+                        / CAST(NI.KM_TOTAL_VIDA AS DECIMAL(14,4))
+                    AS DECIMAL(14, 5))
                 END AS COSTO_POR_KM,
-                CASE WHEN KM_TOTAL_VIDA = 0 THEN 0
-                    WHEN KM_TOTAL_VIDA >= 1 THEN CAST((NI.KM_TOTAL_VIDA / (ri.REMANENTE_MONTADO - NI.REMANENTE_ACTUAL)) AS DECIMAL(10, 2))
-                    ELSE 0
+                CASE
+                    WHEN COALESCE(NI.KM_TOTAL_VIDA, 0) = 0 THEN 0
+                    WHEN COALESCE(ri.REMANENTE_MONTADO, 0) = 0 THEN 0
+                    WHEN (ri.REMANENTE_MONTADO - NI.REMANENTE_ACTUAL) <= 0 THEN 0
+                    ELSE CAST(
+                        CAST(NI.KM_TOTAL_VIDA AS DECIMAL(14,4))
+                        / CAST(ri.REMANENTE_MONTADO - NI.REMANENTE_ACTUAL AS DECIMAL(14,4))
+                    AS DECIMAL(14, 2))
                 END AS KM_POR_REMAMENTE,
                 NP.COSTO_INICIAL AS COSTO_NEUMATICO,
                 nmbaja.TIPO_BAJA,
-                nmbaja.FECHA_DE_BAJA,
-                NI.PROYECTO_ACTUAL AS TALLER_ACTUAL
-            FROM ${BD_SCHEMA}.NEU_INFORMACION NI
-            LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
+                nmbaja.FECHA_DE_BAJA
+            FROM SPEED400AT.NEU_INFORMACION NI
+            LEFT JOIN SPEED400AT.NEU_PADRON NP
                 ON NP.ID = NI.ID_NEUMATICO
-            LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NM
+            LEFT JOIN SPEED400AT.NEU_MARCA NM
                 ON NM.ID_MARCA = NP.ID_MARCA
-            INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO U
+            INNER JOIN SPEED400AT.MAE_TALLER_X_USUARIO U
                 ON TRIM(u.CH_CODI_USUARIO) = ?
-            INNER JOIN ${BD_SCHEMA}.PO_TALLER T
+            INNER JOIN SPEED400AT.PO_TALLER T
                 ON U.ID_TALLER = T.ID
                 AND T.DESCRIPCION = NI.PROYECTO_ACTUAL
             LEFT JOIN (
                 SELECT ID_NEUMATICO, REMANENTE_MEDIDO AS REMANENTE_MONTADO,
                 ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID ASC) AS RN
-                FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 2
+                FROM SPEED400AT.NEU_MOVIMIENTOS WHERE ID_ACCION = 2
             ) ri ON ri.ID_NEUMATICO = np."ID" AND ri.RN = 1
             LEFT JOIN (
                 SELECT ID_NEUMATICO, TIPO_BAJA, FECHA_RECUPERADO AS FECHA_DE_BAJA,
                 ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID DESC) AS RN1
-                FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
+                FROM SPEED400AT.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
             ) nmbaja ON nmbaja.ID_NEUMATICO = np.ID AND nmbaja.RN1 = 1
             WHERE NI.ID_ESTADO = 3 AND NI.KM_TOTAL_VIDA >= 1
             ${taller != 'todos' ? `AND NI.PROYECTO_ACTUAL = '${taller}' ` : ''}
         `;
+
+        // let query = `
+        //     SELECT
+        //         NP."ID" AS ID_NEUMATICO,
+        //         NP.CODIGO AS CODIGO_NEUMATICO,
+        //         NM.MARCA AS MARCA_NEUMATICO,
+        //         NP.MEDIDA AS MEDIDA_NEUMATICO,
+        //         NP.DISENO AS DISENO_NEUMATICO,
+        //         NI.KM_TOTAL_VIDA AS KM_TOTAL_VIDA_NEUMATICO,
+        //         NP.REMANENTE_INICIAL AS REMANENTE_INCIAL,
+        //         ri.REMANENTE_MONTADO AS REMANENTE_MONTADO,
+        //         NI.REMANENTE_ACTUAL AS REMANENTE_ACTUAL,
+        //         CASE WHEN KM_TOTAL_VIDA = 0 THEN 0
+        //             WHEN KM_TOTAL_VIDA >= 1 THEN CAST((((ri.REMANENTE_MONTADO - NI.REMANENTE_ACTUAL) / NI.KM_TOTAL_VIDA) * 1000) AS DECIMAL(10, 2))
+        //             ELSE 0
+        //         END AS DESGASTE_POR_1000KM,
+        //         CASE WHEN KM_TOTAL_VIDA = 0 THEN 0
+        //             WHEN KM_TOTAL_VIDA >= 1 THEN CAST((NP.COSTO_INICIAL / NI.KM_TOTAL_VIDA) AS DECIMAL(10, 5))
+        //             ELSE 0
+        //         END AS COSTO_POR_KM,
+        //         CASE WHEN KM_TOTAL_VIDA = 0 THEN 0
+        //             WHEN KM_TOTAL_VIDA >= 1 THEN CAST((NI.KM_TOTAL_VIDA / (ri.REMANENTE_MONTADO - NI.REMANENTE_ACTUAL)) AS DECIMAL(10, 2))
+        //             ELSE 0
+        //         END AS KM_POR_REMAMENTE,
+        //         NP.COSTO_INICIAL AS COSTO_NEUMATICO,
+        //         nmbaja.TIPO_BAJA,
+        //         nmbaja.FECHA_DE_BAJA,
+        //         NI.PROYECTO_ACTUAL AS TALLER_ACTUAL
+        //     FROM ${BD_SCHEMA}.NEU_INFORMACION NI
+        //     LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
+        //         ON NP.ID = NI.ID_NEUMATICO
+        //     LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NM
+        //         ON NM.ID_MARCA = NP.ID_MARCA
+        //     INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO U
+        //         ON TRIM(u.CH_CODI_USUARIO) = ?
+        //     INNER JOIN ${BD_SCHEMA}.PO_TALLER T
+        //         ON U.ID_TALLER = T.ID
+        //         AND T.DESCRIPCION = NI.PROYECTO_ACTUAL
+        //     LEFT JOIN (
+        //         SELECT ID_NEUMATICO, REMANENTE_MEDIDO AS REMANENTE_MONTADO,
+        //         ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID ASC) AS RN
+        //         FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 2
+        //     ) ri ON ri.ID_NEUMATICO = np."ID" AND ri.RN = 1
+        //     LEFT JOIN (
+        //         SELECT ID_NEUMATICO, TIPO_BAJA, FECHA_RECUPERADO AS FECHA_DE_BAJA,
+        //         ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID DESC) AS RN1
+        //         FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
+        //     ) nmbaja ON nmbaja.ID_NEUMATICO = np.ID AND nmbaja.RN1 = 1
+        //     WHERE NI.ID_ESTADO = 3 AND NI.KM_TOTAL_VIDA >= 1
+        //     ${taller != 'todos' ? `AND NI.PROYECTO_ACTUAL = '${taller}' ` : ''}
+        // `;
 
         if (valuesToSend.length >= 1) query += ` AND NI.ID_NEUMATICO IN (${placeholders})`
         query += ` ORDER BY nmbaja.FECHA_DE_BAJA DESC`
