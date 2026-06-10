@@ -34,6 +34,8 @@ const allowedOrigins = [
   "http://192.168.100.182:3000",
   "http://localhost:3000",
   "https://gesneu.tair360.net",
+  "http://172.66.44.144",
+  "http://172.66.47.112",
   process.env.URL_GESNEU_WEB,
   null, // Para peticiones sin origin (opcional, para pruebas locales)
 ];
