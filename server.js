@@ -33,6 +33,7 @@ const allowedOrigins = [
   "http://192.168.5.207:3001",
   "http://192.168.100.182:3000",
   "http://localhost:3000",
+  "https://gesneu.tair360.net",
   process.env.URL_GESNEU_WEB,
   null, // Para peticiones sin origin (opcional, para pruebas locales)
 ];
@@ -43,7 +44,7 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       } else {
-        return callback(new Error("Not allowed by CORS"));
+        return callback(null, false);
       }
     },
     credentials: true,
@@ -74,7 +75,7 @@ app.use(
       ttl: 8 * 60 * 60,        // TTL en segundos (igual que cookie.maxAge)
       retries: 0,               // sin reintentos — sesión inexistente = archivo no existe, punto
       reapInterval: 60 * 60,    // borra archivos de sesión expirados cada hora
-      logFn: () => {},          // silencia warnings de sesiones expiradas/fantasma
+      logFn: () => { },          // silencia warnings de sesiones expiradas/fantasma
     }),
     secret: process.env.SESSION_SECRET,
     resave: false,

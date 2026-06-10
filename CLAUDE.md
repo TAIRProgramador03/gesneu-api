@@ -11,24 +11,30 @@
 ## Run
 
 ```bash
-npm start        # production (bare node)
-npm run dev      # nodemon watch — respects nodemon.json (sessions/ excluded)
-npm run test:db  # verify DB connectivity
+npm start           # production (bare node)
+npm run dev         # nodemon watch — respects nodemon.json (sessions/ excluded)
+npm run test:db     # verify DB connectivity
+npm run test        # no-op (echo only, no real tests)
+npm run test:modulo1  # runs test_modulo_1.js (file not present in repo — will error)
 ```
 
 ## Architecture
 
 ```
 server.js              ← entry, CORS, session (FileStore), route mount
-routes/                ← endpoint definitions (12 files)
-controllers/           ← request handling + business logic (12 files)
+routes/                ← endpoint definitions (14 files — see Routes below)
+controllers/           ← request handling + business logic (13 files)
 services/neumaticoService.js  ← complex JOINs, normalization, assignment logic
-models/                ← thin data-access wrappers (mostly bypassed)
+models/                ← thin data-access wrappers (mostly bypassed — 4 files)
 config/db.js           ← ODBC pool (odbc.pool), reconnect on stale connection
 config/swagger.js      ← Swagger UI at /api-docs
-migrations/            ← 11 SQL files for AS400 schema
+migrations/            ← 11 SQL files for AS400 schema (001–010 + DEPLOY_FINAL)
 sessions/              ← session files (session-file-store) — gitignored, nodemon-ignored
 nodemon.json           ← excludes sessions/ from watch to prevent restart on session write
+consulta-bd.js         ← dev helper: raw DB query runner (not imported anywhere)
+consulta-simple.js     ← dev helper: simplified query runner (not imported anywhere)
+investigate.js         ← dev script: TDQ-854 investigation (not imported anywhere)
+verificar-neu-movimiento.js  ← dev script: NEU_MOVIMIENTOS verification (not imported anywhere)
 ```
 
 ### Request flow
@@ -101,7 +107,9 @@ Base prefix: `/api`
 | `/api/po-reportes` | poReporte | Monthly/date-range reports |
 | `/api/mapa` | poMapa | Fleet count per workshop |
 
-**Total endpoints**: 80+. Swagger UI: `http://localhost:3001/api-docs`
+**Total endpoints**: ~79 (78 mounted + 1 inline health check). Swagger UI: `http://localhost:3001/api-docs`
+
+> `routes/debugRoutes.js` exists (`GET /debug/mis-neumaticos`) but is **never imported or mounted** in `server.js` — dead file.
 
 ## Key Behaviors
 
@@ -174,6 +182,9 @@ URL_GESNEU_WEB  Frontend URL (added to CORS whitelist)
 8. **`multer` upload.js** — file in `middlewares/upload.js` is **DISABLED** (commented out)
 9. **FileStore sessions on disk** — if `./sessions/` is deleted, all active sessions are invalidated (users must re-login). Session files are JSON, not encrypted.
 10. **SSR + sessions** — Next.js SSR requests without explicit cookie forwarding arrive as unauthenticated (see Frontend/Proxy Integration above)
+11. **Zombie dependencies** — `ibm_db`, `mysql2`, `node-fetch` in `package.json` but **not used anywhere** in codebase; legacy/accidental installs
+12. **debugRoutes.js** — exists in `routes/` but never mounted; `GET /debug/mis-neumaticos` is unreachable
+13. **test_modulo_1.js** — referenced in `npm run test:modulo1` but file does not exist in repo
 
 ## Coding Conventions
 
@@ -184,6 +195,35 @@ URL_GESNEU_WEB  Frontend URL (added to CORS whitelist)
 - Session user accessed via `req.session.user`
 - Profile check: `req.session.user.perfiles.includes('005')`
 - All controllers have `try/catch` — DB errors propagate as thrown exceptions, caught here
+
+## Models
+
+Thin wrappers — mostly bypassed in favor of direct `db.query()` in controllers:
+
+| File | Wraps |
+|------|-------|
+| `models/PoNeumatico.js` | Tire queries |
+| `models/PoBuscarVehiculo.js` | Vehicle lookup |
+| `models/PoPadron.js` | Padron/bulk import |
+| `models/PoSupervisor.js` | Supervisor list |
+
+## Migrations
+
+Ordered deployment sequence in `migrations/`:
+
+```
+001_normalized_schema.sql
+002_migration_data_sample.sql
+003_smart_migration.sql
+004_clean_start.sql
+005_fix_marcas.sql
+006_repair_null_marcas.sql
+007_sync_supervisors.sql
+008_implement_state_catalog.sql
+009_standardize_actions.sql
+010_trim_supervisors.sql
+DEPLOY_FINAL_ESTANDARIZACION.sql  ← final canonical deployment (use this for fresh installs)
+```
 
 ## File Reference
 
@@ -196,5 +236,10 @@ services/neumaticoService.js                 ← core business logic for tires
 controllers/poMantenimientoController.js     ← desasignar/rotation/inspection logic
 controllers/poAsignarNeumaticoController.js  ← assignment with odometer update
 controllers/poPadronController.js            ← Excel bulk import
+models/PoNeumatico.js                        ← tire model (mostly bypassed)
+models/PoBuscarVehiculo.js                   ← vehicle model (mostly bypassed)
+routes/debugRoutes.js                        ← DEBUG ONLY — unmounted, unreachable
+consulta-bd.js                               ← dev helper, not part of app
+investigate.js                               ← dev script (TDQ-854), not part of app
 migrations/DEPLOY_FINAL_ESTANDARIZACION.sql  ← final schema deployment
 ```
