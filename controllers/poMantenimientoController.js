@@ -408,7 +408,7 @@ const desasignarConReemplazo = async (req, res) => {
                     AND SINVSEH.MHALMA = SINVSE.MDALMA
                     AND SINVSEH.MHCOMP = SINVSE.MDCOMP
                     AND TRIM(SINVSEH.MHREF3) = ?
-                    AND TRIM(SINVSEH.MHREF6) LIKE '%NEU'
+                    AND (TRIM(SINVSEH.MHREF6) LIKE '%NEU' OR TRIM(SINVSEH.MHREF6) LIKE '%SIN' OR TRIM(SINVSEH.MHREF6) LIKE '%COB')
                 WHERE SINVSE.MDCMOV = 'S' AND SINVSE.MDTMOV = '60'
                 AND SINVSE.MDCOAR LIKE '%1400%'
                 AND TRIM(SINVSE.MDDRE7) = ?
