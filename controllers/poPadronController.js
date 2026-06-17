@@ -43,7 +43,6 @@ const cargarPadronDesdeExcel = async (req, res) => {
             MEDIDA: encabezados.find(col => limpiarEncabezado(col).includes("MEDIDA")),
             DISENO: encabezados.find(col => limpiarEncabezado(col).includes("DISEÑO") || limpiarEncabezado(col).includes("DISENO")),
             REMANENTE: encabezados.find(col => limpiarEncabezado(col).includes("REMANENTE")),
-            NRO_PLIEGUES: encabezados.find(col => limpiarEncabezado(col).includes("NRO PLIEGUES")),
             PR: encabezados.find(col => limpiarEncabezado(col).includes("PR")),
             CARGA: encabezados.find(col => limpiarEncabezado(col).includes("CARGA")),
             VELOCIDAD: encabezados.find(col => limpiarEncabezado(col).includes("VELOCIDAD")),
@@ -140,7 +139,6 @@ const cargarPadronDesdeExcel = async (req, res) => {
                     MEDIDA: columnas.MEDIDA ? (fila[columnas.MEDIDA] || '').trim().substring(0, 20) : null,
                     DISENO: columnas.DISENO ? (fila[columnas.DISENO] || '').trim() : null,
                     REMANENTE_INICIAL: columnas.REMANENTE ? (parseFloat(fila[columnas.REMANENTE]) || 0) : null,
-                    NRO_PLIEGUES: columnas.NRO_PLIEGUES ? (parseFloat(fila[columnas.NRO_PLIEGUES]) || 0) : null,
                     PR: columnas.PR ? parseInt((fila[columnas.PR] || 0).toString().trim()) : null,
                     CARGA: columnas.CARGA ? parseInt((fila[columnas.CARGA] || 0).toString().trim()) : null,
                     VELOCIDAD: columnas.VELOCIDAD ? normalizarCampos(fila[columnas.VELOCIDAD] || '0', 10) : 0,
@@ -194,13 +192,13 @@ const cargarPadronDesdeExcel = async (req, res) => {
 
                 // INSERT - NEUMATICO
 
-                const query = `INSERT INTO ${BD_SCHEMA}.NEU_PADRON (CODIGO, ID_MARCA, MEDIDA, DISENO, PR, CARGA, VELOCIDAD, FECHA_FABRICACION_COD, REMANENTE_INICIAL, FECHA_COMPRA, COSTO_INICIAL, ID_PROVEEDOR, RQ, OC, LEASING, PROYECTO, FECHA_ENVIO, NRO_PLIEGUES) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                const query = `INSERT INTO ${BD_SCHEMA}.NEU_PADRON (CODIGO, ID_MARCA, MEDIDA, DISENO, PR, CARGA, VELOCIDAD, FECHA_FABRICACION_COD, REMANENTE_INICIAL, FECHA_COMPRA, COSTO_INICIAL, ID_PROVEEDOR, RQ, OC, LEASING, PROYECTO, FECHA_ENVIO) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
                 const params = [
                     filaLimpia.CODIGO, filaLimpia.ID_MARCA, filaLimpia.MEDIDA, filaLimpia.DISENO,
                     filaLimpia.PR, filaLimpia.CARGA, filaLimpia.VELOCIDAD, filaLimpia.FECHA_FABRICACION_COD, filaLimpia.REMANENTE_INICIAL,
                     filaLimpia.FECHA_COMPRA, filaLimpia.COSTO_INICIAL, filaLimpia.ID_PROVEEDOR,
-                    filaLimpia.RQ, filaLimpia.OC, filaLimpia.LEASING, filaLimpia.TALLER, filaLimpia.FECHA_ENVIO, filaLimpia.NRO_PLIEGUES
+                    filaLimpia.RQ, filaLimpia.OC, filaLimpia.LEASING, filaLimpia.TALLER, filaLimpia.FECHA_ENVIO
                 ];
 
                 await db.query(query, params);
