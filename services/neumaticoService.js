@@ -167,7 +167,8 @@ const neumaticoService = {
         fecha_inspeccion = null,
         nuevoPorcentaje = 0,
         fecha_mantenimiento = null,
-        tipoBaja = null
+        tipoBaja = null,
+        ordenDeTrabajo = null
     }) => {
 
         const sqlEstado = `SELECT ID_ESTADO FROM ${BD_SCHEMA}.NEU_ESTADO WHERE CODIGO_INTERNO = ?`;
@@ -195,8 +196,9 @@ const neumaticoService = {
                 FECHA_INSPECCION,
                 PORCENTAJE_VIDA,
                 FECHA_RECUPERADO,
-                TIPO_BAJA
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                TIPO_BAJA,
+                NRO_OT
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
         const params = [
             idNeumatico, idVehiculo || null,
@@ -211,7 +213,8 @@ const neumaticoService = {
             fecha_inspeccion || null,
             nuevoPorcentaje || 0,
             fecha_mantenimiento,
-            tipoBaja
+            tipoBaja,
+            ordenDeTrabajo
         ];
         return await db.query(sql, params);
     },
@@ -219,7 +222,7 @@ const neumaticoService = {
     /**
      * Asignar un neumático a un vehículo (Montaje)
      */
-    asignarNeumatico: async (data, usuario) => {
+    asignarNeumatico: async (data, usuario, OT = null) => {
         const {
             CodigoNeumatico, Remanente, PresionAire, TorqueAplicado,
             Placa, Posicion, Odometro, ID_OPERACION, COD_SUPERVISOR, FechaAsignacion
@@ -309,7 +312,8 @@ const neumaticoService = {
             ID_OPERACION,
             COD_SUPERVISOR,
             FechaAsignacion,
-            nuevoPorcentaje: porcentajeRemantene
+            nuevoPorcentaje: porcentajeRemantene,
+            ordenDeTrabajo: OT
         });
 
         return { message: 'Asignación Correcta (Normalizada)' };
@@ -432,7 +436,7 @@ const neumaticoService = {
      */
     desasignarNeumatico: async (data, usuario) => {
         const {
-            CODIGO, TIPO_MOVIMIENTO, OBSERVACION, KILOMETRO, REMANENTE, COD_SUPERVISOR, ID_OPERACION, TIPO_BAJA
+            CODIGO, TIPO_MOVIMIENTO, OBSERVACION, KILOMETRO, REMANENTE, COD_SUPERVISOR, ID_OPERACION, TIPO_BAJA, OT
         } = data;
 
         const nuevoEstado = (TIPO_MOVIMIENTO === 'BAJA DEFINITIVA') ? 'BAJA' : 'RECUPERADO';
@@ -541,7 +545,8 @@ const neumaticoService = {
             nuevoPorcentaje: PORCENTAJE_VIDA,
             proyecto: PROYECTO_ACTUAL,
             torque: TORQUE_APLICADO,
-            fecha_mantenimiento: ULTIMA_INSPECCION
+            fecha_mantenimiento: ULTIMA_INSPECCION,
+            ordenDeTrabajo: OT
         });
     },
 

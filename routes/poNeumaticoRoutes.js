@@ -407,4 +407,6 @@ router.get('/actividad-reciente', poNeumaticoController.getActividadReciente)
 
 router.get('/neumaticos-por-vehiculo', poNeumaticoController.getVehiculosPorNeumaticos)
 
+router.get('/verificar-orden-de-trabajo', poNeumaticoController.getOrdenDeTrabajo)
+
 module.exports = router;

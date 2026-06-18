@@ -363,7 +363,7 @@ const desasignarConReemplazo = async (req, res) => {
         const db = require("../config/db");
 
         // agregar información general: {designaciones, asignaciones, placa} = req.body
-        const { desasignaciones, asignaciones } = req.body;
+        const { desasignaciones, asignaciones, OT } = req.body;
         const usuario = req.session.user?.usuario || 'SISTEMA';
 
         // Validar que se reciban ambos arrays
@@ -373,7 +373,7 @@ const desasignarConReemplazo = async (req, res) => {
             });
         }
 
-        const bajasDefinitivas = desasignaciones.filter(d => d.TIPO_MOVIMIENTO === 'BAJA DEFINITIVA');
+        const bajasDefinitivas = desasignaciones;
 
         if (bajasDefinitivas.length > 0) {
             const movimientosPorPosicion = (() => {
@@ -421,7 +421,7 @@ const desasignarConReemplazo = async (req, res) => {
                 if (rows.length === 0) {
                     return res.status(400).json({
                         error: `No se encontró salida S60 para posición ${mov.pos}`,
-                        detalle: `Nuevo: ${mov.nuevo}\nBaja: ${mov.baja}`
+                        detalle: `Entra: ${mov.nuevo}\nSale: ${mov.baja}`
                     });
                 }
             }
@@ -538,13 +538,14 @@ const desasignarConReemplazo = async (req, res) => {
                 KILOMETRO: desasignacion.KILOMETRO,
                 REMANENTE: desasignacion.REMANENTE,
                 COD_SUPERVISOR: desasignacion.COD_SUPERVISOR,
-                ID_OPERACION: desasignacion.ID_OPERACION
+                ID_OPERACION: desasignacion.ID_OPERACION,
+                OT
             }, usuario);
         }
 
         // PASO 2: Ejecutar ASIGNACIONES primero
         for (const asignacion of asignaciones) {
-            await neumaticoService.asignarNeumatico(asignacion, usuario);
+            await neumaticoService.asignarNeumatico(asignacion, usuario, OT);
         }
 
         res.status(201).json({

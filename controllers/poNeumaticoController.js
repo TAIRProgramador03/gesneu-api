@@ -912,6 +912,48 @@ const getVehiculosPorNeumaticos = async (req, res) => {
     }
 }
 
+const getOrdenDeTrabajo = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    if (!req.query.placa) return res.status(400).json({ error: 'Codigo de placa es requerido' });
+    if (!req.query.ordenDeTrabajo) return res.status(400).json({ error: 'Codigo de ordenDeTrabajo es requerido' });
+
+    const { ordenDeTrabajo, placa } = req.query
+
+    try {
+        let query = `
+        SELECT
+            SINVSEH.MHALMA AS ALMACEN,
+            SINVSEH.MHCMOV AS CLASE,
+            SINVSEH.MHTMOV AS TIPO, 
+            SINVSEH.MHCOMP AS VALE,
+            SINVSE.MDCORR AS CORRELATIVO,
+            SINVSE.MDFECH AS FECHA_MOVIMIENTO,
+            TRIM(SINVSEH.MHREF3) AS PLACA,
+            TRIM(SINVSEH.MHREF6) AS OT,
+            TRIM(SUBSTR(SINVSE.MDDRE7, 1, LOCATE('-', SINVSE.MDDRE7) - 1)) AS CODNUEVO,
+            TRIM(SUBSTR(SINVSE.MDDRE7, LOCATE('-', SINVSE.MDDRE7) + 1)) AS CODBAJA
+        FROM ${BD_SCHEMA}.TMOVD AS SINVSE
+        INNER JOIN ${BD_SCHEMA}.TMOVH AS SINVSEH
+            ON SINVSEH.MHCMOV = SINVSE.MDCMOV
+            AND SINVSEH.MHTMOV = SINVSE.MDTMOV
+            AND SINVSEH.MHALMA = SINVSE.MDALMA
+            AND SINVSEH.MHCOMP = SINVSE.MDCOMP
+            AND TRIM(SINVSEH.MHREF3) = ?
+            AND (TRIM(SINVSEH.MHREF6) LIKE '%NEU' OR TRIM(SINVSEH.MHREF6) LIKE '%SIN' OR TRIM(SINVSEH.MHREF6) LIKE '%COB')
+            AND TRIM(SINVSEH.MHREF6) = ? 
+        WHERE SINVSE.MDCMOV = 'S' AND SINVSE.MDTMOV = '60'
+        AND SINVSE.MDCOAR LIKE '%1400%'
+        ORDER BY SINVSE.MDFECH DESC
+        `;
+
+        const result = await db.query(query, [placa, ordenDeTrabajo]);
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
 // Exportar todo
 module.exports = {
     getPoNeumaticos,
@@ -943,5 +985,6 @@ module.exports = {
     getAllMedidas,
     getAllMarcas,
     getActividadReciente,
-    getVehiculosPorNeumaticos
+    getVehiculosPorNeumaticos,
+    getOrdenDeTrabajo
 };
