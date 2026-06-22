@@ -11,11 +11,15 @@ const buscarVehiculoPorPlaca = async (req, res) => {
     const { placa } = req.params;
     const usuario = req.session.user?.usuario?.trim().toUpperCase();
     const placaLimpia = placa.trim().toUpperCase();
-    // Reconstruir usuario_super como en la lógica de negocio
-    // SELECT enriquecido con joins y validación de usuario_super
 
-    const query = `SELECT
-        VE.NUMPLA AS PLACA,
+    const { transito } = req.query;
+    console.log({ transito })
+
+    let query = '';
+
+    if (transito === 'false') {
+      query = `SELECT
+        DISTINCT VE.NUMPLA AS PLACA,
         TRIM(PM.DESCRIPCION) AS MARCA,
         TRIM(PMO.DESMODGEN) AS MODELO,
         TRIM(PT.DESCRIPCION)  AS TIPO,
@@ -61,6 +65,59 @@ const buscarVehiculoPorPlaca = async (req, res) => {
         FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE WHERE FECHA_INSPECCION IS NOT NULL
       ) klm ON klm.PLACA = VE.NUMPLA AND klm.RN = 1
       WHERE TRIM(VE.NUMPLA) = ? AND TRIM(USU.CH_CODI_USUARIO) = ?`;
+    } else {
+      query = `
+        SELECT
+          DISTINCT VE.NUMPLA AS PLACA,
+          TRIM(PM.DESCRIPCION) AS MARCA,
+          TRIM(PMO.DESMODGEN) AS MODELO,
+          TRIM(PT.DESCRIPCION)  AS TIPO,
+          TRIM(VE.COLOR) AS COLOR,
+          VE.ANO,
+          VE.KILOMETRAJE,
+          klm.KILOMETRAJE_GESNEU,
+          POS.ID AS ID_OPERACION,
+          TRIM(POS.DESCRIPCION) AS OPERACION,
+          POS.IDSUP AS ID_SUPERVISOR,
+          CASE VE.TP_TRABAJO
+            WHEN 0 THEN 'SUPERFICIE'
+            WHEN 1 THEN 'SOCAVÓN'
+            WHEN 2 THEN 'CIUDAD'
+            WHEN 3 THEN 'SEVERO'
+            WHEN 4 THEN 'PENDIENTE'
+            ELSE 'SIN TIPO DE TRABAJO'
+          END AS TIPO_TERRENO,
+          CASE VE.ES_RETEN
+            WHEN 0 THEN 'TITULAR'
+            WHEN 1 THEN 'RETÉN'
+            WHEN 2 THEN 'LOGISTICA'
+            ELSE 'SIN RETEN'
+          END AS RETEN
+      FROM ${BD_SCHEMA}.PO_VEHICULO AS VE
+        INNER JOIN ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO AS USU
+          ON VE.SECOPE = USU.IDOPERACION
+        LEFT JOIN ${BD_SCHEMA}.PO_MODELO PMO
+          ON PMO."ID" = VE.IDMOD
+        LEFT JOIN ${BD_SCHEMA}.PO_MARCA PM
+          ON PM.ID = VE.IDMAR
+        LEFT JOIN ${BD_SCHEMA}.PO_TIPO PT
+          ON PT."ID" = VE.IDTIP
+        LEFT JOIN ${BD_SCHEMA}.PO_OPERACIONES POS
+          ON POS."ID" = USU.IDOPERACION
+          AND TRIM(POS.DESCRIPCION) <> 'TAIR VENDIDAS' AND TRIM(POS.DESCRIPCION) <> 'UNIDADES AJENAS'
+          AND TRIM(POS.DESCRIPCION) <> 'UNIDADES SUB CONTRATADAS'
+        LEFT JOIN ${BD_SCHEMA}.PO_SUPERVISORES PSUP
+          ON PSUP.CODPLA = POS.IDSUP
+        LEFT JOIN (
+        SELECT PLACA, KILOMETRAJE AS KILOMETRAJE_GESNEU,
+          ROW_NUMBER() OVER (PARTITION BY PLACA ORDER BY ID DESC) AS RN
+          FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE WHERE FECHA_INSPECCION IS NOT NULL
+        ) klm ON klm.PLACA = VE.NUMPLA AND klm.RN = 1
+      WHERE
+      TRIM(VE.NUMPLA) = ? AND
+      TRIM(USU.CH_CODI_USUARIO) <> ?
+      `;
+    }
 
     const result = await db.query(query, [placaLimpia, usuario]);
     if (result && result.length > 0) {
