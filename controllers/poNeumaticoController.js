@@ -276,9 +276,7 @@ const neumaticosRecuperados = async (req, res) => {
             LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
                 ON NI.ID_NEUMATICO = NP.ID
             WHERE NI.PROYECTO_ACTUAL = ?
-            AND ((NI.ID_ESTADO = 1 AND NI.ES_RECUPERADO = TRUE)
-            OR (NI.ID_ESTADO = 3))
-            `;
+            AND(NI.ID_ESTADO = 1 OR NI.ID_ESTADO = 3)`;
 
         let paramsX = [proyectoOrigen]
 
@@ -645,6 +643,7 @@ const getDesgastePorMilKms = async (req, res) => {
                 NP.REMANENTE_INICIAL AS REMANENTE_INCIAL,
                 ri.REMANENTE_MONTADO AS REMANENTE_MONTADO,
                 NI.REMANENTE_ACTUAL AS REMANENTE_ACTUAL,
+                NI.PROYECTO_ACTUAL AS TALLER_ACTUAL,
                 CASE
                     WHEN COALESCE(NI.KM_TOTAL_VIDA, 0) = 0 THEN 0
                     WHEN COALESCE(ri.REMANENTE_MONTADO, 0) = 0 THEN 0

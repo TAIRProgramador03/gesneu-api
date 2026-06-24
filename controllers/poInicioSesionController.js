@@ -32,12 +32,23 @@ const login = async (req, res) => {
             [usuario]
         );
 
+        const talleres = await db.query(`
+            SELECT pt.DESCRIPCION AS "taller"
+                FROM ${BD_SCHEMA}.MAE_USUARIO MUF
+                LEFT JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO mtxu 
+                    ON mtxu.CH_CODI_USUARIO = MUF.CH_CODI_USUARIO
+                LEFT JOIN ${BD_SCHEMA}.PO_TALLER pt 
+                    ON mtxu.ID_TALLER = pt.ID
+                WHERE MUF.CH_CODI_USUARIO = ?
+            `, [usuario]);
+
         // Guarda el usuario en la sesión y fuerza el guardado
         req.session.user = {
             usuario: user.CH_CODI_USUARIO,
             nombre: user.VC_DESC_NOMB_USUARIO,
             apellido_paterno: user.VC_DESC_APELL_PATERNO,
             apellido_materno: user.VC_DESC_APELL_MATERNO,
+            talleres: talleres,
             perfiles: perfiles.map(p => ({
                 codigo: p.CH_CODI_PERFIL,
                 descripcion: p.VC_DESC_PERFIL
