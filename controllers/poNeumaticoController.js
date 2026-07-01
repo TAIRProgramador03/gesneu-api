@@ -672,7 +672,8 @@ const getDesgastePorMilKms = async (req, res) => {
                 END AS KM_POR_REMAMENTE,
                 NP.COSTO_INICIAL AS COSTO_NEUMATICO,
                 nmbaja.TIPO_BAJA,
-                nmbaja.FECHA_DE_BAJA
+                nmbaja.FECHA_DE_BAJA,
+                NI.PROYECTO_ACTUAL AS TALLER_ACTUAL
             FROM SPEED400AT.NEU_INFORMACION NI
             LEFT JOIN SPEED400AT.NEU_PADRON NP
                 ON NP.ID = NI.ID_NEUMATICO

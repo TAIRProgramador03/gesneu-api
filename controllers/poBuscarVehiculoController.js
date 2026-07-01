@@ -13,7 +13,6 @@ const buscarVehiculoPorPlaca = async (req, res) => {
     const placaLimpia = placa.trim().toUpperCase();
 
     const { transito } = req.query;
-    console.log({ transito })
 
     let query = '';
 
@@ -68,7 +67,7 @@ const buscarVehiculoPorPlaca = async (req, res) => {
     } else {
       query = `
         SELECT
-          DISTINCT VE.NUMPLA AS PLACA,
+          VE.NUMPLA AS PLACA,
           TRIM(PM.DESCRIPCION) AS MARCA,
           TRIM(PMO.DESMODGEN) AS MODELO,
           TRIM(PT.DESCRIPCION)  AS TIPO,
@@ -92,7 +91,8 @@ const buscarVehiculoPorPlaca = async (req, res) => {
             WHEN 1 THEN 'RETÉN'
             WHEN 2 THEN 'LOGISTICA'
             ELSE 'SIN RETEN'
-          END AS RETEN
+          END AS RETEN,
+          USU.CH_CODI_USUARIO AS USUARIOGAAA
       FROM ${BD_SCHEMA}.PO_VEHICULO AS VE
         INNER JOIN ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO AS USU
           ON VE.SECOPE = USU.IDOPERACION
@@ -114,9 +114,12 @@ const buscarVehiculoPorPlaca = async (req, res) => {
           FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE WHERE FECHA_INSPECCION IS NOT NULL
         ) klm ON klm.PLACA = VE.NUMPLA AND klm.RN = 1
       WHERE
-      TRIM(VE.NUMPLA) = ? AND
-      TRIM(USU.CH_CODI_USUARIO) <> ?
-      `;
+      TRIM(VE.NUMPLA) = ?
+      AND NOT EXISTS (
+          SELECT 1 FROM ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO X
+          WHERE X.IDOPERACION = VE.SECOPE
+            AND TRIM(X.CH_CODI_USUARIO) = ?
+      )`;
     }
 
     const result = await db.query(query, [placaLimpia, usuario]);
