@@ -373,7 +373,7 @@ const desasignarConReemplazo = async (req, res) => {
             });
         }
 
-        const bajasDefinitivas = desasignaciones.filter(d => d.TIPO_MOVIMIENTO === 'BAJA DEFINITIVA');
+        const bajasDefinitivas = desasignaciones;
 
         if (bajasDefinitivas.length > 0) {
             const movimientosPorPosicion = (() => {
@@ -421,7 +421,7 @@ const desasignarConReemplazo = async (req, res) => {
                 if (rows.length === 0) {
                     return res.status(400).json({
                         error: `No se encontró salida S60 para posición ${mov.pos}`,
-                        detalle: `Nuevo: ${mov.nuevo}\nBaja: ${mov.baja}`
+                        detalle: `Entra (nuevo): ${mov.nuevo}\nSale (usado): ${mov.baja}`
                     });
                 }
             }

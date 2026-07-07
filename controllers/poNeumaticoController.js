@@ -276,7 +276,7 @@ const neumaticosRecuperados = async (req, res) => {
             LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
                 ON NI.ID_NEUMATICO = NP.ID
             WHERE NI.PROYECTO_ACTUAL = ?
-            AND ((NI.ID_ESTADO = 1 AND NI.ES_RECUPERADO = TRUE)
+            AND(NI.ID_ESTADO = 1 OR NI.ID_ESTADO = 3)
             OR (NI.ID_ESTADO = 3))
             `;
 
@@ -673,7 +673,8 @@ const getDesgastePorMilKms = async (req, res) => {
                 END AS KM_POR_REMAMENTE,
                 NP.COSTO_INICIAL AS COSTO_NEUMATICO,
                 nmbaja.TIPO_BAJA,
-                nmbaja.FECHA_DE_BAJA
+                nmbaja.FECHA_DE_BAJA,
+                NI.PROYECTO_ACTUAL AS TALLER_ACTUAL
             FROM SPEED400AT.NEU_INFORMACION NI
             LEFT JOIN SPEED400AT.NEU_PADRON NP
                 ON NP.ID = NI.ID_NEUMATICO
