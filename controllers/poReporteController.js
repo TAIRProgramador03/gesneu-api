@@ -438,27 +438,27 @@ exports.getDistribucionVehicularPorTerreno = async (req, res) => {
             SELECT
                 NVK.TIPO_TERRENO AS "name",
                 COUNT(DISTINCT NMBAJA.PLACA) AS "value"
-            FROM SPEED400AT.NEU_MOVIMIENTOS NM
-            LEFT JOIN SPEED400AT.NEU_PADRON NP
+            FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
+            LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
                 ON NM.ID_NEUMATICO = NP.ID AND NP.COSTO_INICIAL >= 1
                     ${diseno !== '' ? ' AND NP.DISENO = ?' : ''}
                     ${marcaF !== '' ? ' AND NP.ID_MARCA = ?' : ''}
-            LEFT JOIN SPEED400AT.NEU_MARCA NMAR
+            LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NMAR
                 ON NP.ID_MARCA = NMAR.ID_MARCA
-            INNER JOIN SPEED400AT.NEU_INFORMACION NI
+            INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
                 ON NP."ID" = NI.ID_NEUMATICO AND NI.ID_ESTADO = 3
                 ${talleresSeleccionados.length >= 1 ? ` AND NI.PROYECTO_ACTUAL IN (${placeholders})` : ''}
-            LEFT JOIN SPEED400AT.NEU_VKILOMETRAJE NVK
+            LEFT JOIN ${BD_SCHEMA}.NEU_VKILOMETRAJE NVK
                 ON NVK.FECHA_INSPECCION = NM.FECHA_INSPECCION AND NVK.PLACA = NM.PLACA
-            INNER JOIN SPEED400AT.MAE_TALLER_X_USUARIO u
+            INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
                 ON TRIM(u.CH_CODI_USUARIO) = ?
-            INNER JOIN SPEED400AT.PO_TALLER t
+            INNER JOIN ${BD_SCHEMA}.PO_TALLER t
                 ON u.ID_TALLER = t.ID
                 AND t.DESCRIPCION = ni.PROYECTO_ACTUAL
             INNER JOIN (
                 SELECT ID_NEUMATICO, FECHA_RECUPERADO AS FECHA_BAJA, TIPO_BAJA, PLACA,
                 ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID DESC) AS RN1
-                FROM SPEED400AT.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
+                FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
                 ${fechaInicio !== '' ? ` AND FECHA_RECUPERADO >= ?` : ''}
                 ${fechaFin !== '' ? ` AND FECHA_RECUPERADO <= ?` : ''}
             ) NMBAJA ON NMBAJA.ID_NEUMATICO = NM.ID_NEUMATICO AND NMBAJA.RN1 = 1
