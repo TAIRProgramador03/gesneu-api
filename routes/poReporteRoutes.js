@@ -129,4 +129,18 @@ router.get('/neu-inspeccion-por-fechas', poReporteController.getNeuInspeccionPor
 
 router.get('/bajas', poReporteController.getMovimientosDeNeumaticosEnBaja);
 
+router.get('/talleres', poReporteController.getTalleresNeumaticosEnBaja);
+
+router.get('/condiciones', poReporteController.getCondicionesNeumaticosEnBaja);
+
+router.get('/disenos', poReporteController.getDisenosNeumaticosEnBaja);
+
+router.get('/marcas', poReporteController.getMarcasNeumaticosEnBaja);
+
+router.post('/distribucion-por-terreno', poReporteController.getDistribucionPorTerreno);
+
+router.post('/distribucion-por-motivos-de-baja', poReporteController.getDistribucionPorMotivoDeBaja);
+
+router.post('/distribucion-vehicular-por-terreno', poReporteController.getDistribucionVehicularPorTerreno);
+
 module.exports = router;

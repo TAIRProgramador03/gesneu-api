@@ -421,7 +421,7 @@ const desasignarConReemplazo = async (req, res) => {
                 if (rows.length === 0) {
                     return res.status(400).json({
                         error: `No se encontró salida S60 para posición ${mov.pos}`,
-                        detalle: `Entra: ${mov.nuevo}\nSale: ${mov.baja}`
+                        detalle: `Entra (nuevo): ${mov.nuevo}\nSale (usado): ${mov.baja}`
                     });
                 }
             }

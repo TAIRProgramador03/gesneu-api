@@ -104,6 +104,7 @@ const obtenerHistorialMovimientosPorCodigo = async (req, res) => {
                 nm.PRESION_MEDIDA          AS PRESION_AIRE_PSI,
                 nm.TORQUE_APLICADO         AS TORQUE_APLICADO_NM,
                 nm.KM_RECORRIDOS_ETAPA     AS KM_RECORRIDOS_EN_ETAPA,
+                nm.ODOMETRO_VEHICULO       AS ODOMETRO_VEHICULAR,
                 nm.PORCENTAJE_VIDA         AS PORCENTAJE_VIDA_UTIL,
                 nm.OBS                     AS OBSERVACION,
                 nm.USUARIO_REGISTRADOR     AS USUARIO_REGISTRADOR,
