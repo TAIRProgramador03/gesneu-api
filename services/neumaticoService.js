@@ -79,7 +79,7 @@ const neumaticoService = {
                 LEFT JOIN (
                     SELECT ID_NEUMATICO, FECHA_RECUPERADO,
                     ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID DESC) AS RN1
-                    FROM SPEED400AT.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
+                    FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
                 ) nmbaja ON nmbaja.ID_NEUMATICO = np.ID AND nmbaja.RN1 = 1
                 `;
 
