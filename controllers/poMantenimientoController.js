@@ -363,7 +363,7 @@ const desasignarConReemplazo = async (req, res) => {
         const db = require("../config/db");
 
         // agregar información general: {designaciones, asignaciones, placa} = req.body
-        const { desasignaciones, asignaciones, OT } = req.body;
+        const { desasignaciones, asignaciones } = req.body;
         const usuario = req.session.user?.usuario || 'SISTEMA';
 
         // Validar que se reciban ambos arrays
@@ -538,14 +538,13 @@ const desasignarConReemplazo = async (req, res) => {
                 KILOMETRO: desasignacion.KILOMETRO,
                 REMANENTE: desasignacion.REMANENTE,
                 COD_SUPERVISOR: desasignacion.COD_SUPERVISOR,
-                ID_OPERACION: desasignacion.ID_OPERACION,
-                OT
+                ID_OPERACION: desasignacion.ID_OPERACION
             }, usuario);
         }
 
         // PASO 2: Ejecutar ASIGNACIONES primero
         for (const asignacion of asignaciones) {
-            await neumaticoService.asignarNeumatico(asignacion, usuario, OT);
+            await neumaticoService.asignarNeumatico(asignacion, usuario);
         }
 
         res.status(201).json({
