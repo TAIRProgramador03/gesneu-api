@@ -276,7 +276,7 @@ const neumaticosRecuperados = async (req, res) => {
             LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
                 ON NI.ID_NEUMATICO = NP.ID
             WHERE NI.PROYECTO_ACTUAL = ?
-            AND (NI.ID_ESTADO = 1 AND NI.ES_RECUPERADO = TRUE)
+            AND (NI.ID_ESTADO = 1 OR NI.ID_ESTADO = 3)
             `;
 
         let paramsX = [proyectoOrigen]

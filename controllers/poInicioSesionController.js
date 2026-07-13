@@ -10,7 +10,13 @@ const login = async (req, res) => {
     const { usuario, password } = req.body;
     try {
         const users = await db.query(
-            `SELECT CH_CODI_USUARIO, VC_DESC_NOMB_USUARIO, VC_DESC_APELL_PATERNO, VC_DESC_APELL_MATERNO, CH_PASS_USUA, CH_ESTA_ACTIVO
+            `SELECT 
+                CH_CODI_USUARIO,
+                CASE WHEN CH_CODI_USUARIO = 'GESNEU' THEN 'JOSE'    ELSE VC_DESC_NOMB_USUARIO     END AS VC_DESC_NOMB_USUARIO,
+                CASE WHEN CH_CODI_USUARIO = 'GESNEU' THEN 'ARENAS'  ELSE VC_DESC_APELL_PATERNO    END AS VC_DESC_APELL_PATERNO,
+                CASE WHEN CH_CODI_USUARIO = 'GESNEU' THEN 'ARIAS'   ELSE VC_DESC_APELL_MATERNO    END AS VC_DESC_APELL_MATERNO,
+                CH_PASS_USUA,
+                CH_ESTA_ACTIVO
              FROM ${BD_SCHEMA}.MAE_USUARIO
              WHERE CH_CODI_USUARIO = ?`,
             [usuario]
