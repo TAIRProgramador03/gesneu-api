@@ -28,18 +28,15 @@ const asignarNeumatico = async (req, res) => {
             ID_OPERACION,
             COD_SUPERVISOR,
             EnTransito,
-            Talleres
+            Taller
         } = item;
 
         odometroKV = Odometro;
         placaKV = Placa;
         fechaDeAsignacionKV = FechaAsignacion;
 
-        console.log({ item })
-
-
         // Validación básica
-        if (!CodigoNeumatico || !Remanente || !PresionAire || !Placa || !Posicion || TorqueAplicado === null || !Odometro || !FechaAsignacion || !ID_OPERACION || !COD_SUPERVISOR || !EnTransito) {
+        if (!CodigoNeumatico || !Remanente || !PresionAire || !Placa || !Posicion || TorqueAplicado === null || !Odometro || !FechaAsignacion || !ID_OPERACION || !COD_SUPERVISOR || !Taller) {
             resultados.push({
                 index: i,
                 error: "Faltan campos obligatorios (incluya FechaRegistro en formato YYYY-MM-DD)."

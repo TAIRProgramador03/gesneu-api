@@ -30,6 +30,7 @@ const buscarVehiculoPorPlaca = async (req, res) => {
         klm.KILOMETRAJE_GESNEU,
         POS.ID AS ID_OPERACION,
         TRIM(POS.DESCRIPCION) AS OPERACION,
+        PTALL.DESCRIPCION AS TALLER,
         POS.IDSUP AS ID_SUPERVISOR,
         CASE VE.TP_TRABAJO
           WHEN 0 THEN 'SUPERFICIE'
@@ -56,6 +57,8 @@ const buscarVehiculoPorPlaca = async (req, res) => {
         ON PT."ID" = VE.IDTIP
       LEFT JOIN ${BD_SCHEMA}.PO_OPERACIONES POS
         ON POS."ID" = USU.IDOPERACION
+      LEFT JOIN ${BD_SCHEMA}.PO_TALLER PTALL
+  	    ON PTALL.ID = POS.IDTLR
       LEFT JOIN ${BD_SCHEMA}.PO_SUPERVISORES PSUP
         ON PSUP.CODPLA = POS.IDSUP
       LEFT JOIN (
@@ -77,6 +80,7 @@ const buscarVehiculoPorPlaca = async (req, res) => {
           klm.KILOMETRAJE_GESNEU,
           POS.ID AS ID_OPERACION,
           TRIM(POS.DESCRIPCION) AS OPERACION,
+          PTALL.DESCRIPCION AS TALLER,
           POS.IDSUP AS ID_SUPERVISOR,
           CASE VE.TP_TRABAJO
             WHEN 0 THEN 'SUPERFICIE'
@@ -106,6 +110,8 @@ const buscarVehiculoPorPlaca = async (req, res) => {
           ON POS."ID" = USU.IDOPERACION
           AND TRIM(POS.DESCRIPCION) <> 'TAIR VENDIDAS' AND TRIM(POS.DESCRIPCION) <> 'UNIDADES AJENAS'
           AND TRIM(POS.DESCRIPCION) <> 'UNIDADES SUB CONTRATADAS'
+        LEFT JOIN ${BD_SCHEMA}.PO_TALLER PTALL
+  	      ON PTALL.ID = POS.IDTLR
         LEFT JOIN ${BD_SCHEMA}.PO_SUPERVISORES PSUP
           ON PSUP.CODPLA = POS.IDSUP
         LEFT JOIN (

@@ -93,6 +93,8 @@ const registrarReubicacionNeumatico = async (req, res) => {
                     OBSERVACION: datos.OBSERVACION,
                     ID_OPERACION: datos.ID_OPERACION,
                     COD_SUPERVISOR: datos.COD_SUPERVISOR,
+                    EnTransito: datos.TRANSITO,
+                    TallerEnTransito: datos.TALLER
                 }
                 await neumaticoService.reubicarNeumatico(data, usuario);
             } catch (e) {
@@ -538,11 +540,13 @@ const desasignarConReemplazo = async (req, res) => {
                 KILOMETRO: desasignacion.KILOMETRO,
                 REMANENTE: desasignacion.REMANENTE,
                 COD_SUPERVISOR: desasignacion.COD_SUPERVISOR,
-                ID_OPERACION: desasignacion.ID_OPERACION
+                ID_OPERACION: desasignacion.ID_OPERACION,
+                EnTransito: desasignacion.TRANSITO,
+                Taller: desasignacion.TALLER
             }, usuario);
         }
 
-        // PASO 2: Ejecutar ASIGNACIONES primero
+        //  PASO 2: Ejecutar ASIGNACIONES primero
         for (const asignacion of asignaciones) {
             await neumaticoService.asignarNeumatico(asignacion, usuario);
         }

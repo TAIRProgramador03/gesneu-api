@@ -45,6 +45,7 @@ const crearInspeccion = async (req, res) => {
         let reten = ''
 
         for (const datos of datosArray) {
+
             try {
                 // Mapeo de campos del Frontend -> Servicio
                 const dataServicio = {
@@ -57,7 +58,9 @@ const crearInspeccion = async (req, res) => {
                     TORQUE: datos.TORQUE_APLICADO,
                     cod_supervisor: datos.COD_SUPERVISOR,
                     id_operacion: datos.ID_OPERACION,
-                    fecha_inspeccion: datos.FECHA_INSPECCION
+                    fecha_inspeccion: datos.FECHA_INSPECCION,
+                    EnTransito: datos.TRANSITO,
+                    TallerEnTransito: datos.TALLER
                 };
 
                 placa = datos.PLACA

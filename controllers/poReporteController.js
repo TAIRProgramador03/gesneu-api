@@ -147,7 +147,7 @@ exports.getTalleresNeumaticosEnBaja = async (req, res) => {
                 NM.PROYECTO AS "label"
             FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
             LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
-                ON NM.ID_NEUMATICO = NP.ID AND NP.COSTO_INICIAL >= 1
+                ON NM.ID_NEUMATICO = NP.ID
             LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NMAR
                 ON NP.ID_MARCA = NMAR.ID_MARCA
             INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
@@ -189,7 +189,7 @@ exports.getCondicionesNeumaticosEnBaja = async (req, res) => {
                 UPPER(LEFT(NVK.RETEN, 1)) || LOWER(SUBSTR(NVK.RETEN, 2)) AS "label"
             FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
             LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
-                ON NM.ID_NEUMATICO = NP.ID AND NP.COSTO_INICIAL >= 1
+                ON NM.ID_NEUMATICO = NP.ID
             LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NMAR
                 ON NP.ID_MARCA = NMAR.ID_MARCA
             INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
@@ -231,7 +231,7 @@ exports.getDisenosNeumaticosEnBaja = async (req, res) => {
                 NP.DISENO AS "label"
             FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
             LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
-                ON NM.ID_NEUMATICO = NP.ID AND NP.COSTO_INICIAL >= 1
+                ON NM.ID_NEUMATICO = NP.ID
             LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NMAR
                 ON NP.ID_MARCA = NMAR.ID_MARCA
             INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
@@ -273,7 +273,7 @@ exports.getMarcasNeumaticosEnBaja = async (req, res) => {
                 UPPER(LEFT(NMAR.MARCA, 1)) || LOWER(SUBSTR(NMAR.MARCA, 2)) AS "label"
             FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
             LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
-                ON NM.ID_NEUMATICO = NP.ID AND NP.COSTO_INICIAL >= 1
+                ON NM.ID_NEUMATICO = NP.ID
             LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NMAR
                 ON NP.ID_MARCA = NMAR.ID_MARCA
             INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
@@ -309,8 +309,10 @@ exports.getDistribucionPorTerreno = async (req, res) => {
 
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
 
-    const { talleresSeleccionados = [], diseno = '', marcaF = '', fechaInicio = '', fechaFin = '' } = req.body
+    const { talleresSeleccionados = [], disenos = [], marcas = [], fechaInicio = '', fechaFin = '' } = req.body
     const placeholders = talleresSeleccionados.map(() => '?').join(',');
+    const placeholdersMarcas = marcas.map(() => '?').join(',')
+    const placeholdersDisenos = disenos.map(() => '?').join(',')
 
     const usuario = req.session.user.usuario;
     try {
@@ -322,9 +324,9 @@ exports.getDistribucionPorTerreno = async (req, res) => {
                 SUM(NM.KM_RECORRIDOS_ETAPA) / COUNT(DISTINCT NM.ID_NEUMATICO) AS KM_PROMEDIO
             FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
             LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
-                ON NM.ID_NEUMATICO = NP.ID AND NP.COSTO_INICIAL >= 1
-                ${diseno !== '' ? ' AND NP.DISENO = ?' : ''}
-                ${marcaF !== '' ? ' AND NP.ID_MARCA = ?' : ''}
+                ON NM.ID_NEUMATICO = NP.ID
+                ${disenos.length >= 1 ? ` AND NP.DISENO IN (${placeholdersDisenos})` : ''}
+                ${marcas.length >= 1 ? ` AND NP.ID_MARCA IN (${placeholdersMarcas})` : ''}
             LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NMAR
                 ON NP.ID_MARCA = NMAR.ID_MARCA
             INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
@@ -350,8 +352,8 @@ exports.getDistribucionPorTerreno = async (req, res) => {
         `;
 
         const parameters = []
-        if (diseno !== '') parameters.push(diseno)
-        if (marcaF !== '') parameters.push(marcaF)
+        if (disenos.length >= 1) parameters.push(...disenos)
+        if (marcas.length >= 1) parameters.push(...marcas)
         if (talleresSeleccionados.length >= 1) parameters.push(...talleresSeleccionados)
         parameters.push(usuario)
 
@@ -369,8 +371,10 @@ exports.getDistribucionPorTerreno = async (req, res) => {
 exports.getDistribucionPorMotivoDeBaja = async (req, res) => {
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
 
-    const { talleresSeleccionados = [], diseno = '', marcaF = '', fechaInicio = '', fechaFin = '' } = req.body
+    const { talleresSeleccionados = [], disenos = [], marcas = [], fechaInicio = '', fechaFin = '' } = req.body
     const placeholders = talleresSeleccionados.map(() => '?').join(',');
+    const placeholdersMarcas = marcas.map(() => '?').join(',')
+    const placeholdersDisenos = disenos.map(() => '?').join(',')
     const usuario = req.session.user.usuario;
 
     try {
@@ -382,9 +386,9 @@ exports.getDistribucionPorMotivoDeBaja = async (req, res) => {
                 SUM(NM.KM_RECORRIDOS_ETAPA) / COUNT(DISTINCT NM.ID_NEUMATICO) AS KM_PROMEDIO
             FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
             LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
-                ON NM.ID_NEUMATICO = NP.ID AND NP.COSTO_INICIAL >= 1
-                ${diseno !== '' ? ' AND NP.DISENO = ?' : ''}
-                ${marcaF !== '' ? ' AND NP.ID_MARCA = ?' : ''}
+                ON NM.ID_NEUMATICO = NP.ID
+                ${disenos.length >= 1 ? ` AND NP.DISENO IN (${placeholdersDisenos})` : ''}
+                ${marcas.length >= 1 ? ` AND NP.ID_MARCA IN (${placeholdersMarcas})` : ''}
             LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NMAR
                 ON NP.ID_MARCA = NMAR.ID_MARCA
             INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
@@ -411,8 +415,8 @@ exports.getDistribucionPorMotivoDeBaja = async (req, res) => {
         `;
 
         const parameters = []
-        if (diseno !== '') parameters.push(diseno)
-        if (marcaF !== '') parameters.push(marcaF)
+        if (disenos.length >= 1) parameters.push(...disenos)
+        if (marcas.length >= 1) parameters.push(...marcas)
         if (talleresSeleccionados.length >= 1) parameters.push(...talleresSeleccionados)
         parameters.push(usuario)
         if (fechaInicio !== '') parameters.push(fechaInicio)
@@ -429,8 +433,10 @@ exports.getDistribucionPorMotivoDeBaja = async (req, res) => {
 exports.getDistribucionVehicularPorTerreno = async (req, res) => {
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
 
-    const { talleresSeleccionados = [], diseno = '', marcaF = '', fechaInicio = '', fechaFin = '' } = req.body
+    const { talleresSeleccionados = [], disenos = [], marcas = [], fechaInicio = '', fechaFin = '' } = req.body
     const placeholders = talleresSeleccionados.map(() => '?').join(',');
+    const placeholdersMarcas = marcas.map(() => '?').join(',')
+    const placeholdersDisenos = disenos.map(() => '?').join(',')
     const usuario = req.session.user.usuario;
 
     try {
@@ -440,9 +446,9 @@ exports.getDistribucionVehicularPorTerreno = async (req, res) => {
                 COUNT(DISTINCT NMBAJA.PLACA) AS "value"
             FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
             LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
-                ON NM.ID_NEUMATICO = NP.ID AND NP.COSTO_INICIAL >= 1
-                    ${diseno !== '' ? ' AND NP.DISENO = ?' : ''}
-                    ${marcaF !== '' ? ' AND NP.ID_MARCA = ?' : ''}
+                ON NM.ID_NEUMATICO = NP.ID
+                ${disenos.length >= 1 ? ` AND NP.DISENO IN (${placeholdersDisenos})` : ''}
+                ${marcas.length >= 1 ? ` AND NP.ID_MARCA IN (${placeholdersMarcas})` : ''}
             LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NMAR
                 ON NP.ID_MARCA = NMAR.ID_MARCA
             INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
@@ -469,8 +475,8 @@ exports.getDistribucionVehicularPorTerreno = async (req, res) => {
         `;
 
         const parameters = []
-        if (diseno !== '') parameters.push(diseno)
-        if (marcaF !== '') parameters.push(marcaF)
+        if (disenos.length >= 1) parameters.push(...disenos)
+        if (marcas.length >= 1) parameters.push(...marcas)
         if (talleresSeleccionados.length >= 1) parameters.push(...talleresSeleccionados)
         parameters.push(usuario)
         if (fechaInicio !== '') parameters.push(fechaInicio)
@@ -480,6 +486,191 @@ exports.getDistribucionVehicularPorTerreno = async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('Error al obtener getDistribucionVehicularPorTerreno:', error);
+        res.status(500).json({ error: 'Error al obtener datos' });
+    }
+
+}
+
+exports.getRelacionNeumaticosPorTerreno = async (req, res) => {
+
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+
+    if (!req.body.terreno) return res.status(400).json({ error: 'Debe proporcionar el tipo de terreno' });
+
+    const { terreno, talleresSeleccionados = [], disenos = [], marcas = [], fechaInicio = '', fechaFin = '' } = req.body
+
+    const placeholders = talleresSeleccionados.map(() => '?').join(',');
+    const placeholdersMarcas = marcas.map(() => '?').join(',')
+    const placeholdersDisenos = disenos.map(() => '?').join(',')
+
+    const usuario = req.session.user.usuario;
+    try {
+        const sql = `
+            SELECT
+                NM.ID_NEUMATICO AS ID_NEUMATICO,
+                NP.CODIGO AS CODIGO_NEUMATICO,
+                NMAR.MARCA AS MARCA_NEUMATICO,
+                NP.MEDIDA AS MEDIDA_NEUMATICO,
+                NP.DISENO AS DISENO_NEUMATICO,
+                NI.PROYECTO_ACTUAL AS PROYECTO_NEUMATICO,
+                NP.COSTO_INICIAL AS COSTO_NEUMATICO,
+                CAST(NI.ES_RECUPERADO AS SMALLINT) AS ES_RECUPERADO,
+                NMBAJA.PLACA AS PLACA_BAJA,
+                SUM(NM.KM_RECORRIDOS_ETAPA) AS KM_TOTAL_VIDA,
+                NVK.TIPO_TERRENO,
+                NMBAJA.TIPO_BAJA,
+                NMBAJA.FECHA_BAJA,
+                NI.REMANENTE_ACTUAL,
+                NI.PORCENTAJE_VIDA
+            FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
+            LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
+                ON NM.ID_NEUMATICO = NP.ID
+                ${disenos.length >= 1 ? ` AND NP.DISENO IN (${placeholdersDisenos})` : ''}
+                ${marcas.length >= 1 ? ` AND NP.ID_MARCA IN (${placeholdersMarcas})` : ''}
+            LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NMAR
+                ON NP.ID_MARCA = NMAR.ID_MARCA
+            INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
+                ON NP."ID" = NI.ID_NEUMATICO AND NI.ID_ESTADO = 3
+                ${talleresSeleccionados.length >= 1 ? ` AND NI.PROYECTO_ACTUAL IN (${placeholders})` : ''}
+            INNER JOIN ${BD_SCHEMA}.NEU_VKILOMETRAJE NVK
+                ON NVK.FECHA_INSPECCION = NM.FECHA_INSPECCION 
+                AND NVK.PLACA = NM.PLACA
+                AND NVK.TIPO_TERRENO = ?   
+            INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+                ON TRIM(u.CH_CODI_USUARIO) = ?
+            INNER JOIN ${BD_SCHEMA}.PO_TALLER t
+                ON u.ID_TALLER = t.ID AND t.DESCRIPCION = ni.PROYECTO_ACTUAL
+            INNER JOIN (
+                SELECT ID_NEUMATICO, FECHA_RECUPERADO AS FECHA_BAJA, TIPO_BAJA, PLACA,
+                ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID DESC) AS RN1
+                FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
+                ${fechaInicio !== '' ? ` AND FECHA_RECUPERADO >= ?` : ''}
+                ${fechaFin !== '' ? ` AND FECHA_RECUPERADO <= ?` : ''}
+            ) NMBAJA ON NMBAJA.ID_NEUMATICO = NM.ID_NEUMATICO AND NMBAJA.RN1 = 1
+            WHERE NM.ID_ACCION = 7
+            AND NM.KM_RECORRIDOS_ETAPA > 10
+            GROUP BY
+                NM.ID_NEUMATICO,
+                NP.CODIGO,
+                NMAR.MARCA,
+                NP.MEDIDA,
+                NP.DISENO,
+                NI.PROYECTO_ACTUAL,
+                NP.COSTO_INICIAL,
+                NI.ES_RECUPERADO,
+                NVK.TIPO_TERRENO,
+                NMBAJA.TIPO_BAJA,
+                NMBAJA.PLACA,
+                NMBAJA.FECHA_BAJA,
+                NI.REMANENTE_ACTUAL,
+                NI.PORCENTAJE_VIDA
+            ORDER BY NMBAJA.FECHA_BAJA DESC
+        `;
+
+        const parameters = []
+        if (disenos.length >= 1) parameters.push(...disenos)
+        if (marcas.length >= 1) parameters.push(...marcas)
+        if (talleresSeleccionados.length >= 1) parameters.push(...talleresSeleccionados)
+        parameters.push(terreno)
+        parameters.push(usuario)
+
+        if (fechaInicio !== '') parameters.push(fechaInicio)
+        if (fechaFin !== '') parameters.push(fechaFin)
+
+        const result = await db.query(sql, parameters);
+        res.json(result);
+    } catch (error) {
+        console.error('Error al obtener getRelacionNeumaticosPorTerreno:', error);
+        res.status(500).json({ error: 'Error al obtener datos' });
+    }
+
+}
+
+exports.getRelacionNeumaticosPorBaja = async (req, res) => {
+
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+
+    if (!req.body.baja) return res.status(400).json({ error: 'Debe proporcionar el tipo de baja' });
+
+    const { baja, talleresSeleccionados = [], disenos = [], marcas = [], fechaInicio = '', fechaFin = '' } = req.body
+
+    const placeholders = talleresSeleccionados.map(() => '?').join(',');
+    const placeholdersMarcas = marcas.map(() => '?').join(',')
+    const placeholdersDisenos = disenos.map(() => '?').join(',')
+
+    const usuario = req.session.user.usuario;
+    try {
+        const sql = `
+            SELECT
+                NM.ID_NEUMATICO AS ID_NEUMATICO,
+                NP.CODIGO AS CODIGO_NEUMATICO,
+                NMAR.MARCA AS MARCA_NEUMATICO,
+                NP.MEDIDA AS MEDIDA_NEUMATICO,
+                NP.DISENO AS DISENO_NEUMATICO,
+                NI.PROYECTO_ACTUAL AS PROYECTO_NEUMATICO,
+                NP.COSTO_INICIAL AS COSTO_NEUMATICO,
+                CAST(NI.ES_RECUPERADO AS SMALLINT) AS ES_RECUPERADO,
+                NMBAJA.PLACA AS PLACA_BAJA,
+                SUM(NM.KM_RECORRIDOS_ETAPA) AS KM_TOTAL_VIDA,
+                NMBAJA.TIPO_BAJA,
+                NMBAJA.FECHA_BAJA,
+                NI.REMANENTE_ACTUAL,
+                NI.PORCENTAJE_VIDA
+            FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
+            LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
+                ON NM.ID_NEUMATICO = NP.ID
+                ${disenos.length >= 1 ? ` AND NP.DISENO IN (${placeholdersDisenos})` : ''}
+                ${marcas.length >= 1 ? ` AND NP.ID_MARCA IN (${placeholdersMarcas})` : ''}
+            LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NMAR
+                ON NP.ID_MARCA = NMAR.ID_MARCA
+            INNER JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
+                ON NP."ID" = NI.ID_NEUMATICO AND NI.ID_ESTADO = 3
+                ${talleresSeleccionados.length >= 1 ? ` AND NI.PROYECTO_ACTUAL IN (${placeholders})` : ''}
+            INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+                ON TRIM(u.CH_CODI_USUARIO) = ?
+            INNER JOIN ${BD_SCHEMA}.PO_TALLER t
+                ON u.ID_TALLER = t.ID AND t.DESCRIPCION = ni.PROYECTO_ACTUAL
+            INNER JOIN (
+                SELECT ID_NEUMATICO, FECHA_RECUPERADO AS FECHA_BAJA, TIPO_BAJA, PLACA,
+                ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID DESC) AS RN1
+                FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
+                ${fechaInicio !== '' ? ` AND FECHA_RECUPERADO >= ?` : ''}
+                ${fechaFin !== '' ? ` AND FECHA_RECUPERADO <= ?` : ''}
+                ${` AND TIPO_BAJA = ?`}
+            ) NMBAJA ON NMBAJA.ID_NEUMATICO = NM.ID_NEUMATICO AND NMBAJA.RN1 = 1
+            WHERE NM.ID_ACCION = 7
+            AND NM.KM_RECORRIDOS_ETAPA > 10
+            GROUP BY
+                NM.ID_NEUMATICO,
+                NP.CODIGO,
+                NMAR.MARCA,
+                NP.MEDIDA,
+                NP.DISENO,
+                NI.PROYECTO_ACTUAL,
+                NP.COSTO_INICIAL,
+                NI.ES_RECUPERADO,
+                NMBAJA.TIPO_BAJA,
+                NMBAJA.PLACA,
+                NMBAJA.FECHA_BAJA,
+                NI.REMANENTE_ACTUAL,
+                NI.PORCENTAJE_VIDA
+            ORDER BY NMBAJA.FECHA_BAJA DESC
+        `;
+
+        const parameters = []
+        if (disenos.length >= 1) parameters.push(...disenos)
+        if (marcas.length >= 1) parameters.push(...marcas)
+        if (talleresSeleccionados.length >= 1) parameters.push(...talleresSeleccionados)
+        parameters.push(usuario)
+
+        if (fechaInicio !== '') parameters.push(fechaInicio)
+        if (fechaFin !== '') parameters.push(fechaFin)
+        parameters.push(baja)
+
+        const result = await db.query(sql, parameters);
+        res.json(result);
+    } catch (error) {
+        console.error('Error al obtener getRelacionNeumaticosPorBaja:', error);
         res.status(500).json({ error: 'Error al obtener datos' });
     }
 

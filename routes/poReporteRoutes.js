@@ -143,4 +143,8 @@ router.post('/distribucion-por-motivos-de-baja', poReporteController.getDistribu
 
 router.post('/distribucion-vehicular-por-terreno', poReporteController.getDistribucionVehicularPorTerreno);
 
+router.post('/relacion-neumaticos-por-terreno', poReporteController.getRelacionNeumaticosPorTerreno);
+
+router.post('/relacion-neumaticos-por-baja', poReporteController.getRelacionNeumaticosPorBaja);
+
 module.exports = router;

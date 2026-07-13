@@ -168,7 +168,8 @@ const neumaticoService = {
         nuevoPorcentaje = 0,
         fecha_mantenimiento = null,
         tipoBaja = null,
-        ordenDeTrabajo = null
+        EnTransito = false,
+        TallerEnTransito = null
     }) => {
 
         const sqlEstado = `SELECT ID_ESTADO FROM ${BD_SCHEMA}.NEU_ESTADO WHERE CODIGO_INTERNO = ?`;
@@ -197,8 +198,11 @@ const neumaticoService = {
                 PORCENTAJE_VIDA,
                 FECHA_RECUPERADO,
                 TIPO_BAJA,
-                NRO_OT
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                EN_TRANSITO,
+                PROYECTO_TRANSITO
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+        const siEsTransitoTaller = EnTransito ? TallerEnTransito : null
 
         const params = [
             idNeumatico, idVehiculo || null,
@@ -214,7 +218,8 @@ const neumaticoService = {
             nuevoPorcentaje || 0,
             fecha_mantenimiento,
             tipoBaja,
-            ordenDeTrabajo
+            EnTransito || false,
+            siEsTransitoTaller
         ];
         return await db.query(sql, params);
     },
@@ -222,10 +227,11 @@ const neumaticoService = {
     /**
      * Asignar un neumático a un vehículo (Montaje)
      */
-    asignarNeumatico: async (data, usuario, OT = null) => {
+    asignarNeumatico: async (data, usuario) => {
         const {
             CodigoNeumatico, Remanente, PresionAire, TorqueAplicado,
-            Placa, Posicion, Odometro, ID_OPERACION, COD_SUPERVISOR, FechaAsignacion
+            Placa, Posicion, Odometro, ID_OPERACION, COD_SUPERVISOR, FechaAsignacion,
+            EnTransito, Taller
         } = data;
 
         // Validar que PresionAire sea obligatorio
@@ -313,7 +319,8 @@ const neumaticoService = {
             COD_SUPERVISOR,
             FechaAsignacion,
             nuevoPorcentaje: porcentajeRemantene,
-            ordenDeTrabajo: OT
+            EnTransito,
+            TallerEnTransito: Taller
         });
 
         return { message: 'Asignación Correcta (Normalizada)' };
@@ -325,7 +332,7 @@ const neumaticoService = {
     reubicarNeumatico: async (data, usuario) => {
         const {
             CODIGO, PLACA, POSICION_FIN, POSICION_INICIAL,
-            REMANENTE, PRESION_AIRE, KILOMETRO, OBSERVACION, ID_OPERACION, COD_SUPERVISOR
+            REMANENTE, PRESION_AIRE, KILOMETRO, OBSERVACION, ID_OPERACION, COD_SUPERVISOR, EnTransito, TallerEnTransito
         } = data;
 
         const sqlInsp = `
@@ -427,7 +434,9 @@ const neumaticoService = {
             COD_SUPERVISOR,
             nuevoPorcentaje: porcentajeVidaFinal,
             torque: torqueFinal,
-            fecha_mantenimiento: resInsp[0].FECHA_SUCESO
+            fecha_mantenimiento: resInsp[0].FECHA_SUCESO,
+            EnTransito,
+            TallerEnTransito
         });
     },
 
@@ -436,7 +445,8 @@ const neumaticoService = {
      */
     desasignarNeumatico: async (data, usuario) => {
         const {
-            CODIGO, TIPO_MOVIMIENTO, OBSERVACION, KILOMETRO, REMANENTE, COD_SUPERVISOR, ID_OPERACION, TIPO_BAJA, OT
+            CODIGO, TIPO_MOVIMIENTO, OBSERVACION, KILOMETRO, REMANENTE, COD_SUPERVISOR, ID_OPERACION, TIPO_BAJA,
+            EnTransito, Taller
         } = data;
 
         const nuevoEstado = (TIPO_MOVIMIENTO === 'BAJA DEFINITIVA') ? 'BAJA' : 'RECUPERADO';
@@ -546,7 +556,8 @@ const neumaticoService = {
             proyecto: PROYECTO_ACTUAL,
             torque: TORQUE_APLICADO,
             fecha_mantenimiento: ULTIMA_INSPECCION,
-            ordenDeTrabajo: OT
+            EnTransito: EnTransito,
+            TallerEnTransito: Taller
         });
     },
 
@@ -555,7 +566,7 @@ const neumaticoService = {
      */
     registrarInspeccion: async (data, usuario) => {
         const {
-            CODIGO, REMANENTE, PRESION, KILOMETRO, OBSERVACION, PLACA, TORQUE, cod_supervisor, id_operacion, fecha_inspeccion
+            CODIGO, REMANENTE, PRESION, KILOMETRO, OBSERVACION, PLACA, TORQUE, cod_supervisor, id_operacion, fecha_inspeccion, EnTransito, TallerEnTransito
         } = data;
 
         // TODO:
@@ -702,10 +713,10 @@ const neumaticoService = {
             COD_SUPERVISOR: cod_supervisor,
             proyecto: neumatico.PROYECTO_ACTUAL,
             fecha_inspeccion,
-            nuevoPorcentaje
+            nuevoPorcentaje,
+            EnTransito,
+            TallerEnTransito
         }
-
-        console.log({ newObjt })
 
         await neumaticoService.registrarMovimiento(newObjt);
 
