@@ -14,7 +14,7 @@ const getTodosNeumaticos = async (req, res) => {
 
     try {
         const usuario = req.session.user?.usuario;
-        const datosNormalizados = await neumaticoService.obteneTodos(usuario, talleresSelected, marcasSelected, disenosSelected, medidasSelected, situacionesSelected, recuperadoSelected);
+        const datosNormalizados = await neumaticoService.obtenerTodos(usuario, talleresSelected, marcasSelected, disenosSelected, medidasSelected, situacionesSelected, recuperadoSelected);
         if (!Array.isArray(datosNormalizados)) {
             console.error('❌ Error Crítico: El servicio не devolvió un array.', typeof datosNormalizados, datosNormalizados);
             return res.json([]);
