@@ -9,9 +9,12 @@ const getTodosNeumaticos = async (req, res) => {
     if (!req.session.user || !req.session.user.usuario) {
         return res.status(401).json({ mensaje: 'No autenticado' });
     }
+
+    const { talleresSelected = [], marcasSelected = [], disenosSelected = [], medidasSelected = [], situacionesSelected = [], recuperadoSelected = '' } = req.query
+
     try {
         const usuario = req.session.user?.usuario;
-        const datosNormalizados = await neumaticoService.obtenerTodos(usuario);
+        const datosNormalizados = await neumaticoService.obteneTodos(usuario, talleresSelected, marcasSelected, disenosSelected, medidasSelected, situacionesSelected, recuperadoSelected);
         if (!Array.isArray(datosNormalizados)) {
             console.error('❌ Error Crítico: El servicio не devolvió un array.', typeof datosNormalizados, datosNormalizados);
             return res.json([]);
@@ -859,6 +862,24 @@ const getAllMarcas = async (req, res) => {
     }
 }
 
+const getAllEstados = async (req, res) => {
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    try {
+        const query = `
+        SELECT
+            ID_ESTADO AS "value",
+            DESCRIPCION AS "label"
+        FROM ${BD_SCHEMA}.NEU_ESTADO
+        WHERE ID_ESTADO <> 4
+        `;
+        const result = await db.query(query);
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+}
+
 const getActividadReciente = async (req, res) => {
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
     try {
@@ -985,6 +1006,7 @@ module.exports = {
     getAllDisenos,
     getAllMedidas,
     getAllMarcas,
+    getAllEstados,
     getActividadReciente,
     getVehiculosPorNeumaticos,
     getOrdenDeTrabajo

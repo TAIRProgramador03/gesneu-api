@@ -403,6 +403,8 @@ router.get('/todas-las-medidas', poNeumaticoController.getAllMedidas)
 
 router.get('/todas-las-marcas', poNeumaticoController.getAllMarcas)
 
+router.get('/todos-los-estados', poNeumaticoController.getAllEstados)
+
 router.get('/actividad-reciente', poNeumaticoController.getActividadReciente)
 
 router.get('/neumaticos-por-vehiculo', poNeumaticoController.getVehiculosPorNeumaticos)

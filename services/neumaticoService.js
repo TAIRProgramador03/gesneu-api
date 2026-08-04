@@ -24,7 +24,14 @@ const neumaticoService = {
     /**
      * Obtiene todos los neumáticos con formato compatible para el frontend
      */
-    obtenerTodos: async (filtroSupervisor = null) => {
+    obtenerTodos: async (filtroSupervisor = null, talleresSelected = [], marcasSelected = [], disenosSelected = [], medidasSelected = [], situacionesSelected = [], recuperadoSelected = '') => {
+
+        const talleresPlc = talleresSelected.map(() => '?').join(',');
+        const marcasPlc = marcasSelected.map(() => '?').join(',');
+        const disenosPlc = disenosSelected.map(() => '?').join(',');
+        const medidasPlc = medidasSelected.map(() => '?').join(',');
+        const situacionesPlc = situacionesSelected.map(() => '?').join(',');
+
         let sql = `
                 SELECT
                     np.ID AS ID_NEUMATICO,
@@ -59,7 +66,10 @@ const neumaticoService = {
                     nmbaja.FECHA_RECUPERADO AS FECHA_BAJA
                 FROM ${BD_SCHEMA}.NEU_PADRON np
                 LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
-                    ON ni.ID_NEUMATICO = np.ID
+                    ON ni.ID_NEUMATICO = np.ID 
+                    ${talleresSelected.length >= 1 ? ` AND ni.PROYECTO_ACTUAL IN (${talleresPlc})` : ''}
+                    ${situacionesSelected.length >= 1 ? ` AND ni.ID_ESTADO IN (${situacionesPlc})` : ''}
+                    ${recuperadoSelected.length >= 1 && recuperadoSelected !== 'all' ? ` AND ni.ES_RECUPERADO = ?` : ''}
                 LEFT JOIN ${BD_SCHEMA}.NEU_ESTADO ne
                     ON ne.ID_ESTADO = ni.ID_ESTADO
                 LEFT JOIN ${BD_SCHEMA}.NEU_MARCA nm
@@ -81,12 +91,22 @@ const neumaticoService = {
                     ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID DESC) AS RN1
                     FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
                 ) nmbaja ON nmbaja.ID_NEUMATICO = np.ID AND nmbaja.RN1 = 1
-                `;
+                WHERE 1=1
+                ${marcasSelected.length >= 1 ? ` AND np.ID_MARCA IN (${marcasPlc})` : ''}
+                ${disenosSelected.length >= 1 ? ` AND np.DISENO IN (${disenosPlc})` : ''}
+                ${medidasSelected.length >= 1 ? ` AND np.MEDIDA IN (${medidasPlc})` : ''}
+                `
+            ;
 
         const params = [];
-        if (filtroSupervisor) {
-            params.push(filtroSupervisor.trim());
-        }
+        if (talleresSelected.length >= 1) params.push(...talleresSelected)
+        if (situacionesSelected.length >= 1) params.push(...situacionesSelected)
+        if (recuperadoSelected.length >= 1 && recuperadoSelected !== 'all') params.push(recuperadoSelected)
+        if (filtroSupervisor) params.push(filtroSupervisor.trim());
+        if (marcasSelected.length >= 1) params.push(...marcasSelected)
+        if (disenosSelected.length >= 1) params.push(...disenosSelected)
+        if (medidasSelected.length >= 1) params.push(...medidasSelected)
+
         sql += ' ORDER BY np.CODIGO ASC';
         return db.query(sql, params);
     },
