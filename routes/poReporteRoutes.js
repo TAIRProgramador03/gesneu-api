@@ -147,4 +147,9 @@ router.post('/relacion-neumaticos-por-terreno', poReporteController.getRelacionN
 
 router.post('/relacion-neumaticos-por-baja', poReporteController.getRelacionNeumaticosPorBaja);
 
+router.post('/despachos-neumaticos-por-taller', poReporteController.getDespachosNeumaticosPorTaller);
+
+router.post('/despachos-neumaticos-por-taller-unico', poReporteController.getDespachosNeumaticosPorTallerUnico);
+
+
 module.exports = router;
