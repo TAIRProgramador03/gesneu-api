@@ -6,6 +6,7 @@ const session = require("express-session");
 const FileStore = require("session-file-store")(session);
 
 const poNeumaticoRoutes = require("./routes/poNeumaticoRoutes");
+const poAsignacionMasivaRoutes = require("./routes/poAsignacionMasiva");
 const poSupervisoresRoutes = require("./routes/poSupervisorRoutes");
 const padronRoutes = require("./routes/poPadron");
 const poBuscarVehiculoRoutes = require("./routes/poBuscarVehiculoRoutes");
@@ -131,6 +132,9 @@ app.get("/", (req, res) => {
 // Rutas API
 app.use("/api", poInicioSesionRoutes);
 app.use("/api/po-neumaticos", poNeumaticoRoutes);
+
+app.use("/api/asignacion-masiva", poAsignacionMasivaRoutes);
+
 app.use("/api/po-asignados", poAsignadosRoutes);
 
 app.use("/api/po-neumaticos-disponibles", poNeumaticosDisponiblesRoutes);

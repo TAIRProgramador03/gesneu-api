@@ -678,6 +678,8 @@ exports.getRelacionNeumaticosPorBaja = async (req, res) => {
 
 exports.getDespachosNeumaticosPorTaller = async (req, res) => {
 
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+
     const { talleresSeleccionados = [], disenos = [], marcas = [], fechaInicio = '', fechaFin = '' } = req.body
     const placeholders = talleresSeleccionados.map(() => '?').join(',');
     const placeholdersMarcas = marcas.map(() => '?').join(',')
@@ -750,6 +752,8 @@ exports.getDespachosNeumaticosPorTaller = async (req, res) => {
 
 
 exports.getDespachosNeumaticosPorTallerUnico = async (req, res) => {
+
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
 
     const { talleresSeleccionados = [], disenos = [], marcas = [], fechaInicio = '', fechaFin = '' } = req.body
     const placeholders = talleresSeleccionados.map(() => '?').join(',');

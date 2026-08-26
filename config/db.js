@@ -67,6 +67,7 @@ const db = {
         } catch (err) {
             if (!_retried) {
                 console.warn(`⚠️ ODBC error (${err.message || err}), reconectando pool...`);
+                if (err.odbcErrors) console.warn('   odbcErrors:', JSON.stringify(err.odbcErrors, null, 2));
                 db.pool = null;
                 await db.connect();
                 if (db.pool) return db.query(sql, params, true);
