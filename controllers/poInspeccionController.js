@@ -111,8 +111,6 @@ const crearInspeccion = async (req, res) => {
     }
 };
 
-// Consulta si existe una inspección para un neumático y placa en una fecha específica
-// REFACTORIZADO: Ahora busca en NEU_DETALLE en lugar de NEU_INSPECCION
 const existeInspeccionHoy = async (req, res) => {
     try {
         const { placa, fecha } = req.query;

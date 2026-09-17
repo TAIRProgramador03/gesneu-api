@@ -715,7 +715,7 @@ exports.getDespachosNeumaticosPorTaller = async (req, res) => {
             WHERE SINVSE.MDCMOV = 'S'
             AND SINVSE.MDTMOV = '60'
             AND TRIM(SINVSE.MDDRE7) <> ''
-            AND SINVSE.MDCOAR LIKE '%140%'
+            AND (SINVSE.MDCOAR LIKE '%140%' OR SINVSE.MDCOAR LIKE '%240%')
             AND LOCATE('-', SINVSE.MDDRE7) > 0
             ${fechaInicio !== '' ? `AND SINVSE.MDFECH >= ?` : ''}
             ${fechaFin !== '' ? `AND SINVSE.MDFECH <= ?` : ''}
@@ -815,7 +815,7 @@ exports.getDespachosNeumaticosPorTallerUnico = async (req, res) => {
             WHERE SINVSE.MDCMOV = 'S'
             AND SINVSE.MDTMOV = '60'
             AND TRIM(SINVSE.MDDRE7) <> ''
-            AND SINVSE.MDCOAR LIKE '%140%'
+            AND (SINVSE.MDCOAR LIKE '%140%' OR SINVSE.MDCOAR LIKE '%240%')
             AND LOCATE('-', SINVSE.MDDRE7) > 0
             ${fechaInicio !== '' ? `AND SINVSE.MDFECH >= ?` : ''}
             ${fechaFin !== '' ? `AND SINVSE.MDFECH <= ?` : ''}

@@ -112,28 +112,6 @@ router.delete('/:codigo', poNeumaticoController.eliminarNeumatico);
 
 /**
  * @swagger
- * /api/po-neumaticos/proyectos/cantidad:
- *   get:
- *     summary: Obtener la cantidad de proyectos 
- *     tags: [Neumáticos]
- *     responses:
- *       200:
- *         description: Cantidad de proyectos distintos
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 cantidad:
- *                   type: integer
- *                   example: 5
- *       500:
- *         description: Error al contar proyectos
- */
-router.get('/proyectos/cantidad', poNeumaticoController.contarProyectosNeumatico);
-
-/**
- * @swagger
  * /api/po-neumaticos/cantidad:
  *   get:
  *     summary: Obtener la cantidad total de neumáticos según el perfil del usuario
@@ -229,8 +207,6 @@ router.get('/disponibles/cantidad', poNeumaticoController.contarNeumaticosDispon
  *     summary: Obtener todos los neumáticos (operativos + baja definitiva + recuperados)
  *     description: >-
  *       Retorna una vista unificada de todos los neumáticos del sistema incluyendo:
- *       - Neumáticos operativos (PO_NEUMATICO)
- *       - Neumáticos en baja definitiva (NEU_ELIMINADO)  
  *       - Neumáticos recuperados (NEU_RECUPERADO)
  *       Cada registro incluye un campo ORIGEN_ESTADO para identificar su estado actual.
  *     tags: [Neumáticos]
@@ -410,5 +386,9 @@ router.get('/actividad-reciente', poNeumaticoController.getActividadReciente)
 router.get('/neumaticos-por-vehiculo', poNeumaticoController.getVehiculosPorNeumaticos)
 
 router.get('/verificar-orden-de-trabajo', poNeumaticoController.getOrdenDeTrabajo)
+
+router.get('/neumaticos-disponibles-para-venta', poNeumaticoController.getNeumaticosDisponiblesParaVenta)
+
+router.post('/registrar-venta', poNeumaticoController.registrarNeumaticosVenta)
 
 module.exports = router;

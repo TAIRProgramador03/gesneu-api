@@ -109,142 +109,12 @@ const registrarReubicacionNeumatico = async (req, res) => {
     }
 };
 
-const registrarDesasignacionNeumatico = async (req, res) => {
-    try {
-        const neumaticoService = require("../services/neumaticoService");
-        const db = require("../config/db");
-        const datosArray = Array.isArray(req.body) ? req.body : [req.body];
-        const usuario = req.session.user?.usuario || 'SISTEMA';
-
-        // VALIDACIÓN GLOBAL: Verificar que después de TODAS las desasignaciones,
-        // ninguna posición quede vacía
-        if (datosArray.length > 0) {
-            // Obtener la placa del primer neumático (asumimos que todos son del mismo vehículo)
-            const sqlGetPlaca = `
-                SELECT PLACA_ACTUAL 
-                FROM ${BD_SCHEMA}.NEU_CABECERA 
-                WHERE CODIGO_CASCO = ?
-            `;
-            const resPlaca = await db.query(sqlGetPlaca, [datosArray[0].CODIGO]);
-            const placa = resPlaca[0]?.PLACA_ACTUAL;
-
-            if (placa) {
-                // 1. Obtener posiciones actuales del vehículo
-                const sqlPosicionesActuales = `
-                    SELECT POSICION_ACTUAL, COUNT(*) as TOTAL
-                    FROM ${BD_SCHEMA}.NEU_CABECERA
-                    WHERE PLACA_ACTUAL = ?
-                      AND POSICION_ACTUAL IS NOT NULL
-                      AND POSICION_ACTUAL != ''
-                      AND ID_ESTADO IN (
-                          SELECT ID_ESTADO FROM ${BD_SCHEMA}.NEU_ESTADO 
-                          WHERE CODIGO_INTERNO = 'ASIGNADO'
-                      )
-                    GROUP BY POSICION_ACTUAL
-                `;
-                const resPosiciones = await db.query(sqlPosicionesActuales, [placa]);
-
-                // Crear mapa de posiciones con sus contadores
-                const contadoresPosiciones = new Map();
-                resPosiciones.forEach(row => {
-                    contadoresPosiciones.set(row.POSICION_ACTUAL, row.TOTAL);
-                });
-
-                // 2. Simular las desasignaciones (decrementar contadores)
-                for (const datos of datosArray) {
-                    // Obtener posición del neumático a desasignar
-                    const sqlGetPosicion = `
-                        SELECT POSICION_ACTUAL 
-                        FROM ${BD_SCHEMA}.NEU_CABECERA 
-                        WHERE CODIGO_CASCO = ?
-                    `;
-                    const resPosicion = await db.query(sqlGetPosicion, [datos.CODIGO]);
-                    const posicion = resPosicion[0]?.POSICION_ACTUAL;
-
-                    if (posicion) {
-                        const count = contadoresPosiciones.get(posicion) || 0;
-                        contadoresPosiciones.set(posicion, count - 1);
-                    }
-                }
-
-                // 3. Verificar que ninguna posición quede con 0 neumáticos
-                const posicionesRequeridas = ['POS01', 'POS02', 'POS03', 'POS04', 'RES01'];
-                const posicionesVacias = [];
-
-                posicionesRequeridas.forEach(pos => {
-                    const count = contadoresPosiciones.get(pos) || 0;
-                    if (count <= 0) {
-                        posicionesVacias.push(pos);
-                    }
-                });
-
-                if (posicionesVacias.length > 0) {
-                    throw new Error(
-                        `No se puede guardar: las posiciones ${posicionesVacias.join(', ')} quedarían vacías. ` +
-                        `Asigna neumáticos a estas posiciones antes de guardar.`
-                    );
-                }
-            }
-        }
-
-        // Si pasa la validación, procesar las desasignaciones
-        for (const datos of datosArray) {
-            try {
-                if (!['BAJA DEFINITIVA', 'RECUPERADO'].includes(datos.TIPO_MOVIMIENTO)) {
-                    return res.status(400).json({ error: 'TIPO_MOVIMIENTO inválido. Debe ser BAJA DEFINITIVA o RECUPERADO.' });
-                }
-
-                await neumaticoService.desasignarNeumatico({
-                    CODIGO: datos.CODIGO,
-                    TIPO_MOVIMIENTO: datos.TIPO_MOVIMIENTO,
-                    OBSERVACION: datos.OBSERVACION,
-                    KILOMETRO: datos.KILOMETRO,
-                    REMANENTE: datos.REMANENTE
-                }, usuario);
-            } catch (e) {
-                console.error('Error desasignando neumático:', e);
-                throw e;
-            }
-        }
-        res.status(201).json({ mensaje: `Desasignación de ${datosArray.length} neumático(s) registrada correctamente (Normalizado)` });
-    } catch (error) {
-        console.error('❌ Error general en desasignación:', error);
-        res.status(500).json({ error: 'Error al registrar la desasignación', detalle: error.message });
-    }
-};
-
-// Obtener la última fecha de inspección para un neumático y placa
-const getUltimaFechaInspeccion = async (req, res) => {
-    try {
-        const { codigo, placa } = req.query;
-        if (!codigo || !placa) {
-            return res.status(400).json({ error: "Faltan parámetros: codigo y placa son requeridos" });
-        }
-        // REFACTORIZADO: Busca en NEU_DETALLE
-        const query = `
-            SELECT FECHA_SUCESO AS FECHA_REGISTRO
-            FROM ${BD_SCHEMA}.NEU_DETALLE
-            WHERE CODIGO_CASCO = ? AND PLACA = ?
-              AND UPPER(TIPO_ACCION) = 'INSPECCION'
-            ORDER BY FECHA_SUCESO DESC
-            FETCH FIRST 1 ROW ONLY
-        `;
-        const result = await db.query(query, [codigo, placa]);
-        res.json({ ultima: result[0]?.FECHA_REGISTRO || null });
-    } catch (error) {
-        console.error("Error al consultar ultima inspeccion:", error);
-        res.status(500).json({ error: "Error al consultar la última fecha de inspección", detalle: error.message });
-    }
-};
-
-// Obtener la última fecha de inspección solo por placa
 const getUltimaFechaInspeccionPorPlaca = async (req, res) => {
     try {
         const { placa } = req.query;
         if (!placa) {
             return res.status(400).json({ error: "Falta el parámetro: placa es requerido" });
         }
-        // REFACTORIZADO: Busca en NEU_DETALLE (Consulta simplificada para DB2)
         const query = `
             SELECT 
                 FECHA_INSPECCION AS FECHA_REGISTRO,
@@ -412,6 +282,7 @@ const desasignarConReemplazo = async (req, res) => {
                     AND TRIM(SINVSEH.MHREF3) = ?
                     AND (TRIM(SINVSEH.MHREF6) LIKE '%NEU' OR TRIM(SINVSEH.MHREF6) LIKE '%SIN' OR TRIM(SINVSEH.MHREF6) LIKE '%COB')
                 WHERE SINVSE.MDCMOV = 'S' AND SINVSE.MDTMOV = '60'
+                AND (SINVSE.MDCOAR LIKE '%140%' OR SINVSE.MDCOAR LIKE '%240%')
                 AND TRIM(SINVSE.MDDRE7) = ?
                 ORDER BY SINVSE.MDFECH DESC
             `;
@@ -564,9 +435,7 @@ const desasignarConReemplazo = async (req, res) => {
 
 module.exports = {
     registrarReubicacionNeumatico,
-    registrarDesasignacionNeumatico,
     desasignarConReemplazo,
-    getUltimaFechaInspeccion,
     getUltimaFechaInspeccionPorPlaca,
     getFechasInspeccionVehicularPorPlaca,
     getInspeccionesPorPlaca,

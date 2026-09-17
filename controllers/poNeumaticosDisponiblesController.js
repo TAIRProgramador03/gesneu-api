@@ -66,7 +66,7 @@ const listarNeumaticosDisponibles = async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    console.error("❌ Error al consultar disponibles (NEU_CABECERA):", error);
+    console.error("❌ Error al consultar disponibles", error);
     res.status(500).json({ error: error.message || "Error al obtener neumáticos disponibles" });
   }
 };

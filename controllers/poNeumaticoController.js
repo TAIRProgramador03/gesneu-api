@@ -29,9 +29,6 @@ const getTodosNeumaticos = async (req, res) => {
 // Alias para mantener compatibilidad si el frontend llama a getPoNeumaticos
 const getPoNeumaticos = getTodosNeumaticos;
 
-// ============================================================================
-// FUNCIONES DE CONTEO (Refactorizadas a NEU_CABECERA)
-// ============================================================================
 const contarNeumaticos = async (req, res) => {
 
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
@@ -148,16 +145,6 @@ const eliminarNeumatico = async (req, res) => {
     // Lógica temporal para dar de baja vía servicio? 
     // Por ahora simple soft-delete o error.
     res.status(501).json({ message: 'Use la función de Dar de Baja.' });
-};
-
-const contarProyectosNeumatico = async (req, res) => {
-    try {
-        const result = await db.query(`SELECT COUNT(DISTINCT PROYECTO) AS cantidad FROM ${BD_SCHEMA}.NEU_CABECERA`);
-        const valor = result && result[0] ? (result[0].cantidad || result[0].CANTIDAD || 0) : 0;
-        res.json({ cantidad: valor });
-    } catch (error) {
-        res.status(500).json({ error: 'Error al contar proyectos' });
-    }
 };
 
 const contarNeumaticosAsignados = async (req, res) => {
@@ -702,57 +689,6 @@ const getDesgastePorMilKms = async (req, res) => {
             ${taller != 'todos' ? `AND NI.PROYECTO_ACTUAL = '${taller}' ` : ''}
         `;
 
-        // let query = `
-        //     SELECT
-        //         NP."ID" AS ID_NEUMATICO,
-        //         NP.CODIGO AS CODIGO_NEUMATICO,
-        //         NM.MARCA AS MARCA_NEUMATICO,
-        //         NP.MEDIDA AS MEDIDA_NEUMATICO,
-        //         NP.DISENO AS DISENO_NEUMATICO,
-        //         NI.KM_TOTAL_VIDA AS KM_TOTAL_VIDA_NEUMATICO,
-        //         NP.REMANENTE_INICIAL AS REMANENTE_INCIAL,
-        //         ri.REMANENTE_MONTADO AS REMANENTE_MONTADO,
-        //         NI.REMANENTE_ACTUAL AS REMANENTE_ACTUAL,
-        //         CASE WHEN KM_TOTAL_VIDA = 0 THEN 0
-        //             WHEN KM_TOTAL_VIDA >= 1 THEN CAST((((ri.REMANENTE_MONTADO - NI.REMANENTE_ACTUAL) / NI.KM_TOTAL_VIDA) * 1000) AS DECIMAL(10, 2))
-        //             ELSE 0
-        //         END AS DESGASTE_POR_1000KM,
-        //         CASE WHEN KM_TOTAL_VIDA = 0 THEN 0
-        //             WHEN KM_TOTAL_VIDA >= 1 THEN CAST((NP.COSTO_INICIAL / NI.KM_TOTAL_VIDA) AS DECIMAL(10, 5))
-        //             ELSE 0
-        //         END AS COSTO_POR_KM,
-        //         CASE WHEN KM_TOTAL_VIDA = 0 THEN 0
-        //             WHEN KM_TOTAL_VIDA >= 1 THEN CAST((NI.KM_TOTAL_VIDA / (ri.REMANENTE_MONTADO - NI.REMANENTE_ACTUAL)) AS DECIMAL(10, 2))
-        //             ELSE 0
-        //         END AS KM_POR_REMAMENTE,
-        //         NP.COSTO_INICIAL AS COSTO_NEUMATICO,
-        //         nmbaja.TIPO_BAJA,
-        //         nmbaja.FECHA_DE_BAJA,
-        //         NI.PROYECTO_ACTUAL AS TALLER_ACTUAL
-        //     FROM ${BD_SCHEMA}.NEU_INFORMACION NI
-        //     LEFT JOIN ${BD_SCHEMA}.NEU_PADRON NP
-        //         ON NP.ID = NI.ID_NEUMATICO
-        //     LEFT JOIN ${BD_SCHEMA}.NEU_MARCA NM
-        //         ON NM.ID_MARCA = NP.ID_MARCA
-        //     INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO U
-        //         ON TRIM(u.CH_CODI_USUARIO) = ?
-        //     INNER JOIN ${BD_SCHEMA}.PO_TALLER T
-        //         ON U.ID_TALLER = T.ID
-        //         AND T.DESCRIPCION = NI.PROYECTO_ACTUAL
-        //     LEFT JOIN (
-        //         SELECT ID_NEUMATICO, REMANENTE_MEDIDO AS REMANENTE_MONTADO,
-        //         ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID ASC) AS RN
-        //         FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 2
-        //     ) ri ON ri.ID_NEUMATICO = np."ID" AND ri.RN = 1
-        //     LEFT JOIN (
-        //         SELECT ID_NEUMATICO, TIPO_BAJA, FECHA_RECUPERADO AS FECHA_DE_BAJA,
-        //         ROW_NUMBER() OVER (PARTITION BY ID_NEUMATICO ORDER BY ID DESC) AS RN1
-        //         FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS WHERE ID_ACCION = 5
-        //     ) nmbaja ON nmbaja.ID_NEUMATICO = np.ID AND nmbaja.RN1 = 1
-        //     WHERE NI.ID_ESTADO = 3 AND NI.KM_TOTAL_VIDA >= 1
-        //     ${taller != 'todos' ? `AND NI.PROYECTO_ACTUAL = '${taller}' ` : ''}
-        // `;
-
         if (valuesToSend.length >= 1) query += ` AND NI.ID_NEUMATICO IN (${placeholders})`
         query += ` ORDER BY nmbaja.FECHA_DE_BAJA DESC`
 
@@ -964,6 +900,7 @@ const getOrdenDeTrabajo = async (req, res) => {
             AND (TRIM(SINVSEH.MHREF6) LIKE '%NEU' OR TRIM(SINVSEH.MHREF6) LIKE '%SIN' OR TRIM(SINVSEH.MHREF6) LIKE '%COB')
             AND TRIM(SINVSEH.MHREF6) = ? 
         WHERE SINVSE.MDCMOV = 'S' AND SINVSE.MDTMOV = '60'
+        AND (SINVSE.MDCOAR LIKE '%140%' OR SINVSE.MDCOAR LIKE '%240%')
         AND SINVSE.MDCOAR LIKE '%1400%'
         ORDER BY SINVSE.MDFECH DESC
         `;
@@ -976,13 +913,151 @@ const getOrdenDeTrabajo = async (req, res) => {
     }
 }
 
+const getNeumaticosDisponiblesParaVenta = async (req, res) => {
+
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+
+    const usuario = req.session.user.usuario;
+    const { codigo } = req.query
+
+    try {
+
+        let sql = `
+                SELECT
+                    np.ID AS ID_NEUMATICO,
+                    np.CODIGO AS CODIGO,
+                    nm.MARCA,
+                    np.MEDIDA,
+                    np.DISENO AS DISEÑO,
+                    TRIM(ni.PROYECTO_ACTUAL) AS PROYECTO,
+                    np.COSTO_INICIAL AS COSTO,
+                    CAST(ni.ES_RECUPERADO AS SMALLINT) AS RECUPERADO,
+                    ni.PORCENTAJE_VIDA AS ESTADO,
+                    ni.ID_ESTADO AS ESTADO_ACTUAL,
+                    ne.CODIGO_INTERNO AS TIPO_MOVIMIENTO,
+                    ni.REMANENTE_ACTUAL AS REMANENTE
+                FROM ${BD_SCHEMA}.NEU_PADRON np
+                LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION ni
+                    ON ni.ID_NEUMATICO = np.ID 
+                    AND ni.ES_RECUPERADO = FALSE
+                INNER JOIN ${BD_SCHEMA}.NEU_ESTADO ne
+                    ON ne.ID_ESTADO = ni.ID_ESTADO
+                    AND ni.ID_ESTADO = 1
+                LEFT JOIN ${BD_SCHEMA}.NEU_MARCA nm
+                    ON nm.ID_MARCA = np.ID_MARCA
+                INNER JOIN ${BD_SCHEMA}.MAE_TALLER_X_USUARIO u
+                    ON TRIM(u.CH_CODI_USUARIO) = (?)
+                INNER JOIN ${BD_SCHEMA}.PO_TALLER t
+                    ON u.ID_TALLER = t.ID
+                    AND t.DESCRIPCION = ni.PROYECTO_ACTUAL
+                WHERE 1=1
+                    ${typeof codigo === 'string' && codigo.trim().length > 0 ? ` AND np.CODIGO LIKE (?)` : ''}
+                `;
+
+        let parameters = [usuario]
+
+        if (typeof codigo === 'string' && codigo.trim().length > 0) parameters.push(`%${codigo.trim()}%`)
+
+        const result = await db.query(sql, parameters);
+        res.json(result);
+    } catch (error) {
+        console.error('\n❌ Error:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+
+}
+
+const registrarNeumaticosVenta = async (req, res) => {
+
+    if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
+    const usuario = req.session.user.usuario;
+
+    const { numeroCotizacion, comentarios, neumaticos } = req.body;
+
+    if (!numeroCotizacion || typeof numeroCotizacion !== 'string' || !numeroCotizacion.trim()) {
+        return res.status(400).json({ mensaje: 'El número de cotización es obligatorio.' });
+    }
+    if (!Array.isArray(neumaticos) || neumaticos.length === 0) {
+        return res.status(400).json({ mensaje: 'Debe seleccionar al menos un neumático para vender.' });
+    }
+
+    try {
+
+        const montoTotal = neumaticos.reduce((total, neu) => total + (Number(neu.costoVenta) || 0), 0);
+
+        const sqlCabecera = `
+            SELECT ID_VENTA FROM FINAL TABLE (
+                INSERT INTO ${BD_SCHEMA}.NEU_VENTA_CABECERA (
+                    NRO_COTIZACION, COMENTARIOS, MONTO_TOTAL, USUARIO_REGISTRO
+                ) VALUES (?, ?, ?, ?)
+            )`;
+
+        const resultCabecera = await db.query(sqlCabecera, [
+            numeroCotizacion.trim(), comentarios || null, montoTotal, usuario
+        ]);
+
+        const idVenta = resultCabecera && resultCabecera[0] ? resultCabecera[0].ID_VENTA : null;
+        if (!idVenta) throw new Error('No se pudo registrar la cabecera de venta.');
+
+        for (const neu of neumaticos) {
+            const idNeumatico = Number(neu.idNeumatico);
+            if (!idNeumatico) continue;
+
+            const sqlGetNeumatico = `
+                SELECT
+                    NI.PROYECTO_ACTUAL,
+                    NE.CODIGO_INTERNO AS ESTADO_CODIGO
+                FROM ${BD_SCHEMA}.NEU_INFORMACION NI
+                LEFT JOIN ${BD_SCHEMA}.NEU_ESTADO NE ON NE.ID_ESTADO = NI.ID_ESTADO
+                WHERE NI.ID_NEUMATICO = ?`;
+            const resultNeumatico = await db.query(sqlGetNeumatico, [idNeumatico]);
+
+            if (!resultNeumatico || resultNeumatico.length === 0) {
+                throw new Error(`Neumático ID ${idNeumatico} no encontrado.`);
+            }
+
+            const { ESTADO_CODIGO } = resultNeumatico[0];
+
+            if (ESTADO_CODIGO !== 'DISPONIBLE') {
+                throw new Error(`El neumático ID ${idNeumatico} ya no está disponible para venta (estado actual: ${ESTADO_CODIGO}).`);
+            }
+
+            const costoVenta = Number(neu.costoVenta) || 0;
+            const remanenteAlVender = neu.remanenteAlVender ?? null;
+            const estadoAlVender = neu.estadoAlVender ?? null;
+
+            const sqlDetalle = `
+                INSERT INTO ${BD_SCHEMA}.NEU_VENTA_DETALLE (
+                    ID_VENTA, ID_NEUMATICO, COSTO_VENTA, REMANENTE_AL_VENDER, ESTADO_AL_VENDER
+                ) VALUES (?, ?, ?, ?, ?)`;
+            await db.query(sqlDetalle, [idVenta, idNeumatico, costoVenta, remanenteAlVender, estadoAlVender]);
+
+            const sqlUpdate = `
+                UPDATE ${BD_SCHEMA}.NEU_INFORMACION SET
+                    ID_ESTADO = (SELECT ID_ESTADO FROM ${BD_SCHEMA}.NEU_ESTADO WHERE CODIGO_INTERNO = 'VENDIDO'),
+                    FECHA_ULTIMA_ACTUALIZACION = CURRENT_TIMESTAMP
+                WHERE ID_NEUMATICO = ?`;
+            await db.query(sqlUpdate, [idNeumatico]);
+        }
+
+        res.status(201).json({
+            idVenta,
+            neumaticosVendidos: neumaticos.length,
+        });
+
+    } catch (error) {
+        console.error('\n❌ Error en registrarNeumaticosVenta:', error.message);
+        res.status(500).json({ mensaje: error.message });
+    }
+
+}
+
 // Exportar todo
 module.exports = {
     getPoNeumaticos,
     getTodosNeumaticos,
     actualizarNeumatico,
     eliminarNeumatico,
-    contarProyectosNeumatico,
     contarNeumaticos,
     contarNeumaticosAsignados,
     costoNeumaticosAsignados,
@@ -1009,5 +1084,7 @@ module.exports = {
     getAllEstados,
     getActividadReciente,
     getVehiculosPorNeumaticos,
-    getOrdenDeTrabajo
+    getOrdenDeTrabajo,
+    getNeumaticosDisponiblesParaVenta,
+    registrarNeumaticosVenta
 };

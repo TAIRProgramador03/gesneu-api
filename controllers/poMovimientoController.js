@@ -3,10 +3,6 @@ const neumaticoService = require("../services/neumaticoService");
 require('dotenv').config();
 const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 
-// ============================================================================
-// ADAPTADOR LEGACY: Mapeo de NEU_DETALLE (Nuevo) -> Esquema Antiguo (Frontend)
-// ============================================================================
-
 // Obtener el último movimiento de cada neumático instalado en una placa
 const listarUltimosMovimientosPorPlaca = async (req, res) => {
     try {
@@ -40,12 +36,6 @@ const listarUltimosMovimientosPorPlaca = async (req, res) => {
         `;
 
         const params = [placaTrim];
-
-        // TODO:
-        // if (usuario_super) {
-        //     query += ` AND UPPER(TRIM(d.SUPERVISOR)) = UPPER(?)`;
-        //     params.push(usuario_super.trim());
-        // }
 
         query += ` ORDER BY NM.POSICION_NUEVA`;
 

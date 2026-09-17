@@ -61,9 +61,7 @@ const login = async (req, res) => {
             }))
         };
         req.session.save((err) => {
-            if (err) {
-                return res.status(500).json({ error: 'Error al guardar la sesión' });
-            }
+            if (err) return res.status(500).json({ error: 'Error al guardar la sesión' });
             res.json(req.session.user);
         });
     } catch (error) {

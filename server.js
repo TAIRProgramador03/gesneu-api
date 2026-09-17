@@ -20,6 +20,7 @@ const porMovimientoRoutes = require("./routes/porMovimientoRoutes");
 const poMantenimientoRoutes = require("./routes/poMantenimientoRoutes");
 const poReporteRoutes = require("./routes/poReporteRoutes");
 const poMapaRoutes = require("./routes/poMapaRoutes");
+const poMobileRoutes = require("./routes/poMobileRoutes");
 
 const swaggerUi = require("swagger-ui-express");
 const swaggerJSDoc = require("swagger-jsdoc");
@@ -157,6 +158,7 @@ app.get('/api/health', async (req, res) => {
     res.status(503).json({ status: 'db_down' });
   }
 });
+app.use("/api/mobile", poMobileRoutes);
 
 // Error middleware — debe ir DESPUÉS de todas las rutas
 // Captura errores de DB y cualquier error no manejado que llegue vía next(err)

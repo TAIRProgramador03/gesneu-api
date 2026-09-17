@@ -4,49 +4,6 @@ const poAsignadosController = require("../controllers/poAsignadosController");
 
 /**
  * @swagger
- * tags:
- *   name: "Neumáticos Asignados"
- *   description: "Operaciones sobre asignaciones de neumáticos a vehículos"
- */
-
-/**
- * @swagger
- * /api/po-asignados/codigo/{codigo}:
- *   get:
- *     summary: Obtener neumáticos asignados por código de neumático
- *     tags: [Neumáticos Asignados]
- *     parameters:
- *       - in: path
- *         name: codigo
- *         required: true
- *         description: Código del neumático
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Lista de neumáticos asignados por código
- *         content:
- *           application/json:
- *             example:
- *               - ID: 1
- *                 PLACA: "BLR-241"
- *                 POSICION: "POS01"
- *                 CODIGO: 1001
- *                 MARCA: "PIRELLI"
- *                 MEDIDA: "245/75R16"
- *                 REMANENTE: 14
- *                 ESTADO: "ASIGNADO"
- *                 FECHA_ASIGNADO: "2025-05-09"
- *                 USUARIO_ASIGNA: "JZAVALETA"
- *       400:
- *         description: Error de validación
- *       500:
- *         description: Error del servidor
- */
-router.get("/codigo/:codigo", poAsignadosController.listarNeumaticosAsignadosPorCodigo);
-
-/**
- * @swagger
  * /api/po-asignados/{placa}:
  *   get:
  *     summary: Obtener neumáticos asignados vigentes por placa (uno por posición, excluye los dados de baja definitiva)
@@ -82,39 +39,6 @@ router.get("/codigo/:codigo", poAsignadosController.listarNeumaticosAsignadosPor
  *         description: Error del servidor
  */
 router.get("/:placa", poAsignadosController.listarNeumaticosAsignados);
-
-/**
- * @swagger
- * /api/po-asignados/{id}:
- *   delete:
- *     summary: Eliminar (desasignar) un neumático asignado por ID de asignación
- *     tags: [Neumáticos Asignados]
- *     parameters:
- *       - in: path
- *         name: id
- *         schema:
- *           type: integer
- *         required: true
- *         description: ID de la asignación a eliminar
- *     responses:
- *       200:
- *         description: Asignación eliminada correctamente
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 mensaje:
- *                   type: string
- *                   example: Asignación eliminada correctamente
- *       400:
- *         description: ID inválido
- *       404:
- *         description: Asignación no encontrada
- *       500:
- *         description: Error del servidor
- */
-router.delete('/:id', poAsignadosController.eliminarAsignacion);
 
 /**
  * @swagger

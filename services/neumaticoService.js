@@ -112,67 +112,6 @@ const neumaticoService = {
     },
 
     /**
-     * Crea o Actualiza un neumático en la tabla normalizada
-     * @param {Object} data Datos del neumático recibidos del frontend
-     * @param {string} usuario Usuario que realiza la acción
-     */
-    guardarNeumatico: async (data, usuario) => {
-        const {
-            CODIGO, MARCA, MEDIDA, DISEÑO, REMANENTE,
-            PR, CARGA, VELOCIDAD, DOT, FECHA_COMPRA,
-            COSTO, PROVEEDOR
-        } = data;
-
-        // 1. Obtener ID de Marca
-        const idMarca = await neumaticoService.obtenerIdMarca(MARCA);
-
-        // 2. Verificar si existe
-        const existeSql = `SELECT ID_NEUMATICO FROM ${BD_SCHEMA}.NEU_CABECERA WHERE CODIGO_CASCO = ?`;
-        const existeResult = await db.query(existeSql, [CODIGO]);
-
-        let idNeumatico;
-
-        if (existeResult && existeResult.length > 0) {
-            // UPDATES logic here if needed
-            idNeumatico = existeResult[0].ID_NEUMATICO;
-            // TODO: Implementar Update si es necesario actualizar ficha técnica
-        } else {
-            // INSERT
-            const insertSql = `
-                INSERT INTO ${BD_SCHEMA}.NEU_CABECERA (
-                    CODIGO_CASCO, ID_MARCA, MEDIDA, DISEÑO, REMANENTE_INICIAL,
-                    REMANENTE_ACTUAL, PROVEEDOR_NOMBRE, COSTO_INICIAL,
-                    INDICE_CARGA, INDICE_VELOCIDAD, DOT_FABRICACION, FECHA_COMPRA,
-                    RQ, OC, PROYECTO, SUPERVISOR_ACTUAL,
-                    ID_ESTADO
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT ID_ESTADO FROM ${BD_SCHEMA}.NEU_ESTADO WHERE CODIGO_INTERNO = 'DISPONIBLE'))
-            `;
-            // Nota: db.query con ODBC a veces no devuelve el ID generado. 
-            // Si es así, hay que hacer un select posterior.
-            await db.query(insertSql, [
-                CODIGO, idMarca, MEDIDA, DISEÑO, REMANENTE,
-                REMANENTE, PROVEEDOR, COSTO,
-                CARGA || null, VELOCIDAD || null, DOT || null, FECHA_COMPRA || null,
-                data.RQ || null, data.OC || null, data.PROYECTO || null, data.USUARIO_SUPER || null
-            ]);
-
-            const nuevoResult = await db.query(existeSql, [CODIGO]);
-            idNeumatico = nuevoResult[0].ID_NEUMATICO;
-
-            // Registrar movimiento inicial
-            await neumaticoService.registrarMovimiento({
-                idNeumatico,
-                codigo: CODIGO,
-                tipoAccion: 'INGRESO',
-                estadoDestino: 'DISPONIBLE', // <--- Estado resultante
-                observacion: 'Ingreso inicial al sistema',
-                usuario
-            });
-        }
-        return idNeumatico;
-    },
-
-    /**
      * Registra un movimiento en el detalle
      */
     registrarMovimiento: async ({
@@ -679,11 +618,6 @@ const neumaticoService = {
         // }
 
 
-
-
-
-
-
         // 2. Actualizar Cabecera (Mediciones Actuales + Acumular Vida + Porcentaje)
         // KM_TOTAL_VIDA se incrementa con el recorrido
 
@@ -710,8 +644,6 @@ const neumaticoService = {
 
         const resUpdate = await db.query(sqlUpdate, [REMANENTE, PRESION, nuevoTotalVida, nuevoPorcentaje, TORQUE, KILOMETRO, neumatico.ID_NEUMATICO]);
         console.log(`[registrarInspeccion] Neu_información Actualizada ID ${neumatico.ID_NEUMATICO}: Porcentaje: ${nuevoPorcentaje}%`);
-
-        // 3. Registrar en Historial (NEU_DETALLE) con KM_RECORRIDO y KM_TOTAL_VIDA
 
         const newObjt = {
             idNeumatico: neumatico.ID_NEUMATICO,
