@@ -66,7 +66,10 @@ const buscarVehiculoPorPlaca = async (req, res) => {
         ROW_NUMBER() OVER (PARTITION BY PLACA ORDER BY ID DESC) AS RN
         FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE WHERE FECHA_INSPECCION IS NOT NULL
       ) klm ON klm.PLACA = VE.NUMPLA AND klm.RN = 1
-      WHERE TRIM(VE.NUMPLA) = ? AND TRIM(USU.CH_CODI_USUARIO) = ?`;
+      WHERE TRIM(VE.NUMPLA) = ? 
+      AND TRIM(USU.CH_CODI_USUARIO) = ?
+      AND VE.RECMEN3 = 1
+      `;
     } else {
       query = `
         SELECT
@@ -121,6 +124,7 @@ const buscarVehiculoPorPlaca = async (req, res) => {
         ) klm ON klm.PLACA = VE.NUMPLA AND klm.RN = 1
       WHERE
       TRIM(VE.NUMPLA) = ?
+      AND VE.RECMEN3 = 1
       AND NOT EXISTS (
           SELECT 1 FROM ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO X
           WHERE X.IDOPERACION = VE.SECOPE
@@ -250,11 +254,68 @@ const obtenerCantidadPlacasPorSupervisor = async (req, res) => {
   }
 };
 
+
+const buscarCamionetaPorPlaca = async (req, res) => {
+
+  if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: "No autenticado" });
+
+  try {
+    const usuario = req.session.user?.usuario?.trim().toUpperCase();
+
+    const query = `
+              SELECT
+                PVEH.ID AS ID,
+                TRIM(PVEH.NUMPLA) AS PLACA,
+                CASE PVEH.RECMEN3
+                  WHEN 1 THEN 5
+                  WHEN 2 THEN 7
+                  WHEN 3 THEN 8
+                  WHEN 4 THEN 2
+                  WHEN 5 THEN 6
+                  ELSE 0
+                END AS CANTIDAD_NEUMATICOS,
+                klm.KILOMETRAJE AS KILOMETRAJE,
+                POS.ID AS ID_OPERACION,
+                PTALL.DESCRIPCION AS TALLER,
+                POS.IDSUP AS ID_SUPERVISOR
+              FROM ${BD_SCHEMA}.PO_VEHICULO PVEH
+              INNER JOIN ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO AS USU
+                  ON PVEH.SECOPE = USU.IDOPERACION
+              LEFT JOIN ${BD_SCHEMA}.PO_OPERACIONES POS
+                ON POS."ID" = USU.IDOPERACION
+                AND TRIM(POS.DESCRIPCION) <> 'TAIR VENDIDAS' AND TRIM(POS.DESCRIPCION) <> 'UNIDADES AJENAS'
+                AND TRIM(POS.DESCRIPCION) <> 'UNIDADES SUB CONTRATADAS'
+              LEFT JOIN ${BD_SCHEMA}.PO_TALLER PTALL
+  	            ON PTALL.ID = POS.IDTLR
+              LEFT JOIN (
+                    SELECT IDVEH, KILOMETRAJE,
+                      ROW_NUMBER() OVER (PARTITION BY IDVEH ORDER BY KILOMETRAJE DESC) AS RN
+                    FROM ${BD_SCHEMA}.PO_TEMPREGTAB PTEM
+                  ) klm ON klm.IDVEH = PVEH.ID AND klm.RN = 1
+              WHERE TRIM(USU.CH_CODI_USUARIO) = ? AND (PVEH.RECMEN3 = 2 OR PVEH.RECMEN3 = 3)
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM ${BD_SCHEMA}.NEU_INFORMACION NI
+                    WHERE TRIM(NI.PLACA_ACTUAL) = TRIM(PVEH.NUMPLA)
+                      AND NI.PLACA_ACTUAL IS NOT NULL
+                      AND TRIM(NI.PLACA_ACTUAL) <> ''
+              )
+            `
+
+    const result1 = await db.query(query, [usuario]);
+    res.json(result1);
+  } catch (error) {
+    console.error("❌ Error al obtener camionetas:", error, error.stack);
+    res.status(500).json({ error: "Error al obtener camionetas", detalle: error.message });
+  }
+}
+
 // Listar todas las placas asignadas al usuario autenticado usando la lógica de usuario_super
 
 module.exports = {
   buscarVehiculoPorPlaca,
   buscarVehiculoPorPlacaEmpresa,
   obtenerCantidadPlacas,
-  obtenerCantidadPlacasPorSupervisor
+  obtenerCantidadPlacasPorSupervisor,
+  buscarCamionetaPorPlaca
 };

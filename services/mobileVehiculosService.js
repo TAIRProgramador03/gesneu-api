@@ -69,16 +69,6 @@ async function obtenerSnapshotVehiculos(talleres) {
       ON POS.ID = VE.SECOPE
     LEFT JOIN ${BD_SCHEMA}.PO_TALLER PTALL
       ON PTALL.ID = POS.IDTLR
-    -- Último KILOMETRAJE real de GESNEU, sin filtrar por tipo de evento --
-    -- cuenta tanto INSPECCION como ASIGNACION (antes solo contaba
-    -- INSPECCION via el join klm de abajo, asi que el kilometraje que un
-    -- tecnico ingresaba al asignar los primeros 5 neumaticos de un vehiculo
-    -- nunca se reflejaba hasta la primera inspeccion real -- bug real
-    -- encontrado en la prueba en vivo de Fase 9, 2026-09-14. Separado a
-    -- proposito del join klm de abajo: ese sigue filtrando solo
-    -- INSPECCION porque FECHA_KM tiene otro uso (tiene_inspeccion_previa,
-    -- el candado de RES01) que si debe seguir significando "hubo una
-    -- inspeccion real", no cualquier evento.
     LEFT JOIN (
       SELECT PLACA, KILOMETRAJE AS KILOMETRAJE_GESNEU,
         ROW_NUMBER() OVER (PARTITION BY PLACA ORDER BY ID DESC) AS RN

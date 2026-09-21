@@ -256,6 +256,8 @@ router.get('/buscar-todas/:placa', poBuscarVehiculoController.buscarVehiculoPorP
  *                 detalle:
  *                   type: string
  */
+router.get('/camionetas', poBuscarVehiculoController.buscarCamionetaPorPlaca);
+
 router.get('/:placa', poBuscarVehiculoController.buscarVehiculoPorPlaca);
 
 module.exports = router;
