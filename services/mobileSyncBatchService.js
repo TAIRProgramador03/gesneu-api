@@ -163,14 +163,59 @@ async function aplicarAsignacion(op, usuarioId) {
 }
 
 /**
+ * neumaticoService.reubicarNeumatico NO valida que la posición destino esté
+ * libre — a propósito, según el propio código real (comentario en
+ * poMantenimientoController.js: "La validación de posiciones vacías se hace
+ * en el controlador ANTES del loop"), y ese controlador solo detecta
+ * posiciones que quedarían VACÍAS, nunca dos neumáticos terminando en la
+ * MISMA posición. En mobile, REUBICAR siempre es un intercambio entre 2
+ * posiciones (las 5 posiciones de un vehículo real siempre están llenas,
+ * confirmado con el usuario) — así que la posición destino de un
+ * neumático SIEMPRE está ocupada por otro real, nunca vacía: no puedo
+ * simplemente rechazar "si está ocupada" (como sí hace posicionYaOcupada
+ * para ASIGNACION), porque eso rechazaría TODO intercambio, incluso el
+ * correcto.
+ *
+ * En cambio, verifico que la posición destino esté ocupada por el
+ * neumático ESPERADO (el otro miembro del intercambio, `codigoEnDestino`
+ * en el payload) — o ya vacía (si el otro lado del intercambio ya se
+ * aplicó primero en este mismo batch). Si está ocupada por un neumático
+ * DISTINTO al esperado, algo cambió desde que el técnico armó el
+ * intercambio (otro técnico ya modificó esa posición) — se rechaza.
+ */
+async function posicionCoincideConEsperado(placa, posicion, codigoEsperado) {
+  const filas = await db.query(
+    `SELECT TRIM(NP.CODIGO) AS CODIGO
+       FROM ${BD_SCHEMA}.NEU_INFORMACION NI
+       INNER JOIN ${BD_SCHEMA}.NEU_PADRON NP ON NP.ID = NI.ID_NEUMATICO
+      WHERE NI.PLACA_ACTUAL = ? AND NI.POSICION_ACTUAL = ? AND NI.ID_ESTADO = 2
+      FETCH FIRST 1 ROW ONLY`,
+    [placa, posicion]
+  );
+  const codigoReal = filas[0]?.CODIGO ?? null;
+  return codigoReal === null || codigoReal === codigoEsperado;
+}
+
+/**
  * REUBICAR (rotación de posición en el mismo vehículo) — reusa
  * neumaticoService.reubicarNeumatico, que internamente exige una
  * inspección de esa placa en los últimos 4 días (regla real, ver CLAUDE.md)
  * y lanza si no la hay. El móvil también valida esto en el cliente (mejor
  * UX, avisa antes de llenar el formulario) pero el backend sigue siendo la
- * fuente de verdad — si algo se coló, se rechaza acá igual.
+ * fuente de verdad — si algo se coló, se rechaza acá igual. El único
+ * chequeo que sí se agrega acá (no vive en el service real) es
+ * posicionCoincideConEsperado, ver arriba.
  */
 async function aplicarReubicacion(op, usuarioId) {
+  if (op.placa && op.payload.posicionFin && op.payload.codigoEnDestino) {
+    const ok = await posicionCoincideConEsperado(op.placa, op.payload.posicionFin, op.payload.codigoEnDestino);
+    if (!ok) {
+      throw new Error(
+        `La posicion ${op.payload.posicionFin} de la placa ${op.placa} ya no tiene el neumatico esperado - probablemente otro tecnico ya la modifico.`
+      );
+    }
+  }
+
   const dataServicio = {
     CODIGO: op.payload.codigo,
     PLACA: op.placa,

@@ -61,7 +61,12 @@ const registrarReubicacionNeumatico = async (req, res) => {
                 }
             });
 
-            const posicionesRequeridas = ['POS01', 'POS02', 'POS03', 'POS04', 'RES01'];
+            // Las posiciones a vigilar son las que el vehículo tiene realmente ocupadas
+            // antes de la operación: así vale para moto (2), auto (5) o camión (7) sin
+            // depender de una lista fija, y la regla sigue siendo "no dejar huecos".
+            const posicionesRequeridas = resPosiciones
+                .filter(row => Number(row.TOTAL) > 0)
+                .map(row => row.POSICION_ACTUAL);
             const posicionesVacias = [];
 
             posicionesRequeridas.forEach(pos => {
@@ -355,8 +360,12 @@ const desasignarConReemplazo = async (req, res) => {
                     }
                 }
 
-                // Verificar que ninguna posición quede vacía
-                const posicionesRequeridas = ['POS01', 'POS02', 'POS03', 'POS04', 'RES01'];
+                // Verificar que ninguna posición quede vacía. Se vigilan las posiciones que
+                // el vehículo ya tenía ocupadas, no una lista fija de 5 (rompía con moto y
+                // dejaba sin validar POS05/POS06 en camión).
+                const posicionesRequeridas = resPosiciones
+                    .filter(row => Number(row.TOTAL) > 0)
+                    .map(row => row.POSICION_ACTUAL);
                 const posicionesVacias = [];
 
                 posicionesRequeridas.forEach(pos => {

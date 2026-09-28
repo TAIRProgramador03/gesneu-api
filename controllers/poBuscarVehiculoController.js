@@ -21,7 +21,7 @@ const buscarVehiculoPorPlaca = async (req, res) => {
         DISTINCT VE.NUMPLA AS PLACA,
         TRIM(PM.DESCRIPCION) AS MARCA,
         TRIM(PMO.DESMODGEN) AS MODELO,
-        TRIM(PT.DESCRIPCION)  AS TIPO,
+        TRIM(PT.DESCRIPCION) AS TIPO,
         TRIM(VE.COLOR) AS COLOR,
         TRIM(VE.NROSER) AS NROSERIE,
         TRIM(VE.NROMOT) AS NROMOTOR,
@@ -45,7 +45,15 @@ const buscarVehiculoPorPlaca = async (req, res) => {
           WHEN 1 THEN 'RETÉN'
           WHEN 2 THEN 'LOGISTICA'
           ELSE 'SIN RETEN'
-        END AS RETEN
+        END AS RETEN,
+        CASE VE.RECMEN3
+          WHEN 1 THEN 5
+          WHEN 2 THEN 7
+          WHEN 3 THEN 8
+          WHEN 4 THEN 2
+          WHEN 5 THEN 6
+          ELSE 0
+        END AS CANTIDAD_NEUMATICOS
       FROM ${BD_SCHEMA}.po_vehiculo AS VE
       INNER JOIN ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO AS USU
         ON VE.SECOPE = USU.IDOPERACION
@@ -68,7 +76,6 @@ const buscarVehiculoPorPlaca = async (req, res) => {
       ) klm ON klm.PLACA = VE.NUMPLA AND klm.RN = 1
       WHERE TRIM(VE.NUMPLA) = ? 
       AND TRIM(USU.CH_CODI_USUARIO) = ?
-      AND VE.RECMEN3 = 1
       `;
     } else {
       query = `
@@ -99,7 +106,15 @@ const buscarVehiculoPorPlaca = async (req, res) => {
             WHEN 2 THEN 'LOGISTICA'
             ELSE 'SIN RETEN'
           END AS RETEN,
-          USU.CH_CODI_USUARIO AS USUARIOGAAA
+          USU.CH_CODI_USUARIO AS USUARIOGAAA,
+          CASE VE.RECMEN3
+            WHEN 1 THEN 5
+            WHEN 2 THEN 7
+            WHEN 3 THEN 8
+            WHEN 4 THEN 2
+            WHEN 5 THEN 6
+            ELSE 0
+          END AS CANTIDAD_NEUMATICOS
       FROM ${BD_SCHEMA}.PO_VEHICULO AS VE
         INNER JOIN ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO AS USU
           ON VE.SECOPE = USU.IDOPERACION
@@ -124,7 +139,6 @@ const buscarVehiculoPorPlaca = async (req, res) => {
         ) klm ON klm.PLACA = VE.NUMPLA AND klm.RN = 1
       WHERE
       TRIM(VE.NUMPLA) = ?
-      AND VE.RECMEN3 = 1
       AND NOT EXISTS (
           SELECT 1 FROM ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO X
           WHERE X.IDOPERACION = VE.SECOPE

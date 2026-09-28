@@ -3,17 +3,7 @@ const XLSX = require('xlsx');
 const { randomUUID } = require('crypto');
 
 const CONFIG = {
-  POSICIONES_VALIDAS: ['POS01', 'POS02', 'POS03', 'POS04', 'RES01'],
   POSICION_REPUESTO: 'RES01',
-  MAX_POSICIONES_POR_PLACA: 5,
-
-  // AJUSTAR según política real
-  REMANENTE_MIN: 4.0,
-  REMANENTE_MAX: 20.0,
-  PRESION_MIN: 25,
-  PRESION_MAX: 35,
-  TORQUE_MIN: 110,
-  TORQUE_MAX: 150,
 
   ID_ACCION_MONTAJE: 2,
   ID_ESTADO_DISPONIBLE: 1,
@@ -29,6 +19,54 @@ const CONFIG = {
   // incluyendo hoy).
   VENTANA_DIAS_ATRAS: 3,
 };
+
+// ---------------------------------------------------------------------
+// Catálogo por tipo de vehículo
+// ---------------------------------------------------------------------
+// Las posiciones y los rangos de medición dependen de cuántos neumáticos tiene
+// el vehículo. OJO: CANTIDAD_NEUMATICOS no es una columna, se deriva de RECMEN3
+// con el mismo CASE que usa poBuscarVehiculoController (1→5, 2→7, 3→8, 4→2, 5→6).
+// Una moto usa menos torque y su
+// banda es mucho más delgada que la de un camión. Antes había un único juego de
+// valores fijo de 5 posiciones, así que toda carga de motos (2) o camiones (7)
+// se rechazaba aunque el Excel fuera correcto.
+//
+// IMPORTANTE: mantener en paralelo con src/utils/configuraciones-neumaticos.ts
+// del frontend; los dos deben aplicar la misma regla.
+const CONFIGURACIONES_POR_CANTIDAD = {
+  2: {
+    NOMBRE: 'Moto',
+    POSICIONES_VALIDAS: ['POS01', 'POS02'],
+    REMANENTE_MIN: 0, REMANENTE_MAX: 7,
+    PRESION_MIN: 25, PRESION_MAX: 50,
+    TORQUE_MIN: 30, TORQUE_MAX: 90,
+  },
+  5: {
+    NOMBRE: 'Auto / camioneta',
+    POSICIONES_VALIDAS: ['POS01', 'POS02', 'POS03', 'POS04', 'RES01'],
+    REMANENTE_MIN: 0, REMANENTE_MAX: 25,
+    PRESION_MIN: 25, PRESION_MAX: 50,
+    TORQUE_MIN: 110, TORQUE_MAX: 160,
+  },
+  7: {
+    NOMBRE: 'Camión, eje trasero doble',
+    POSICIONES_VALIDAS: ['POS01', 'POS02', 'POS03', 'POS04', 'POS05', 'POS06', 'RES01'],
+    REMANENTE_MIN: 0, REMANENTE_MAX: 25,
+    PRESION_MIN: 25, PRESION_MAX: 50,
+    TORQUE_MIN: 110, TORQUE_MAX: 160,
+  },
+};
+
+// Si la placa no trae una cantidad reconocida se valida con la configuración de
+// auto/camioneta en vez de rechazar la carga: es preferible aplicar el caso más
+// común a dejar al usuario sin poder cargar nada.
+const CONFIG_VEHICULO_POR_DEFECTO = CONFIGURACIONES_POR_CANTIDAD[5];
+
+function obtenerConfigVehiculo(cantidadNeumaticos) {
+  const cantidad = Number(cantidadNeumaticos);
+  if (!Number.isFinite(cantidad)) return CONFIG_VEHICULO_POR_DEFECTO;
+  return CONFIGURACIONES_POR_CANTIDAD[cantidad] ?? CONFIG_VEHICULO_POR_DEFECTO;
+}
 
 // DB2/ODBC puede devolver las columnas en mayúsculas o minúsculas según el
 // driver. Este helper evita el problema (mismo patrón que ya usas con
@@ -114,7 +152,8 @@ function generarPlantillaBuffer() {
 // ---------------------------------------------------------------------
 // Validación estructural (sin BD) — por fila
 // ---------------------------------------------------------------------
-function validarFilaEstructura(fila) {
+function validarFilaEstructura(fila, cfgVehiculo) {
+  const cfg = cfgVehiculo || CONFIG_VEHICULO_POR_DEFECTO;
   const errores = [];
 
   if (!fila.PLACA) errores.push('PLACA vacía o inválida');
@@ -128,22 +167,22 @@ function validarFilaEstructura(fila) {
 
   if (!fila.POSICION) {
     errores.push('POSICION vacía');
-  } else if (!CONFIG.POSICIONES_VALIDAS.includes(fila.POSICION)) {
+  } else if (!cfg.POSICIONES_VALIDAS.includes(fila.POSICION)) {
     errores.push(`POSICION "${fila.POSICION}" no está en el catálogo permitido`);
   }
 
   if (fila.REMANENTE === null || Number.isNaN(fila.REMANENTE)) {
     errores.push('REMANENTE vacío o no numérico');
-  } else if (fila.REMANENTE < CONFIG.REMANENTE_MIN || fila.REMANENTE > CONFIG.REMANENTE_MAX) {
-    errores.push(`REMANENTE ${fila.REMANENTE}mm fuera de rango (${CONFIG.REMANENTE_MIN}-${CONFIG.REMANENTE_MAX}mm)`);
+  } else if (fila.REMANENTE < cfg.REMANENTE_MIN || fila.REMANENTE > cfg.REMANENTE_MAX) {
+    errores.push(`REMANENTE ${fila.REMANENTE}mm fuera de rango (${cfg.REMANENTE_MIN}-${cfg.REMANENTE_MAX}mm)`);
   }
 
   // PRESION es obligatoria y validada IGUAL para todas las posiciones,
   // incluyendo RES01 (repuesto también debe estar con presión correcta)
   if (fila.PRESION === null || Number.isNaN(fila.PRESION)) {
     errores.push('PRESION vacía o no numérica');
-  } else if (fila.PRESION < CONFIG.PRESION_MIN || fila.PRESION > CONFIG.PRESION_MAX) {
-    errores.push(`PRESION ${fila.PRESION}psi fuera de rango (${CONFIG.PRESION_MIN}-${CONFIG.PRESION_MAX}psi)`);
+  } else if (fila.PRESION < cfg.PRESION_MIN || fila.PRESION > cfg.PRESION_MAX) {
+    errores.push(`PRESION ${fila.PRESION}psi fuera de rango (${cfg.PRESION_MIN}-${cfg.PRESION_MAX}psi)`);
   }
 
   // Solo TORQUE cambia de comportamiento según la posición
@@ -155,8 +194,8 @@ function validarFilaEstructura(fila) {
   } else {
     if (fila.TORQUE === null || Number.isNaN(fila.TORQUE)) {
       errores.push('TORQUE vacío o no numérico (obligatorio en posiciones montadas)');
-    } else if (fila.TORQUE < CONFIG.TORQUE_MIN || fila.TORQUE > CONFIG.TORQUE_MAX) {
-      errores.push(`TORQUE ${fila.TORQUE} fuera de rango (${CONFIG.TORQUE_MIN}-${CONFIG.TORQUE_MAX})`);
+    } else if (fila.TORQUE < cfg.TORQUE_MIN || fila.TORQUE > cfg.TORQUE_MAX) {
+      errores.push(`TORQUE ${fila.TORQUE} fuera de rango (${cfg.TORQUE_MIN}-${cfg.TORQUE_MAX})`);
     }
   }
 
@@ -179,10 +218,12 @@ function agruparPorPlaca(filas) {
   return grupos;
 }
 
-function validarGrupoEstructura(placa, filas) {
+function validarGrupoEstructura(placa, filas, cfgVehiculo) {
+  const cfg = cfgVehiculo || CONFIG_VEHICULO_POR_DEFECTO;
   const errores = [];
-  if (filas.length !== CONFIG.MAX_POSICIONES_POR_PLACA) {
-    errores.push(`La placa ${placa} tiene ${filas.length} fila(s), debe tener exactamente ${CONFIG.MAX_POSICIONES_POR_PLACA} (una por cada posición: ${CONFIG.POSICIONES_VALIDAS.join(', ')})`);
+  const esperadas = cfg.POSICIONES_VALIDAS.length;
+  if (filas.length !== esperadas) {
+    errores.push(`La placa ${placa} tiene ${filas.length} fila(s), debe tener exactamente ${esperadas} (una por cada posición: ${cfg.POSICIONES_VALIDAS.join(', ')})`);
   }
   const vistas = new Map();
   for (const fila of filas) {
@@ -194,7 +235,7 @@ function validarGrupoEstructura(placa, filas) {
     }
   }
 
-  const faltantes = CONFIG.POSICIONES_VALIDAS.filter((p) => !vistas.has(p));
+  const faltantes = cfg.POSICIONES_VALIDAS.filter((p) => !vistas.has(p));
   if (faltantes.length) {
     errores.push(`A la placa ${placa} le falta(n) la(s) posición(es): ${faltantes.join(', ')}`);
   }
@@ -266,7 +307,15 @@ async function validarContraBD(db, BD_SCHEMA, filas) {
 
   const phPlacas = placas.map(() => '?').join(',');
   const vehiculos = await db.query(
-    `SELECT ID AS ID_VEHICULO, NUMPLA AS PLACA, KILOMETRAJE
+    `SELECT ID AS ID_VEHICULO, NUMPLA AS PLACA, KILOMETRAJE,
+                  CASE RECMEN3
+                    WHEN 1 THEN 5
+                    WHEN 2 THEN 7
+                    WHEN 3 THEN 8
+                    WHEN 4 THEN 2
+                    WHEN 5 THEN 6
+                    ELSE 0
+                  END AS CANTIDAD_NEUMATICOS
            FROM ${BD_SCHEMA}.PO_VEHICULO
           WHERE NUMPLA IN (${phPlacas})`,
     placas
@@ -400,17 +449,24 @@ async function validarAsignacionMasiva(db, BD_SCHEMA, filas) {
   const reportePorPlaca = new Map();
   const grupos = agruparPorPlaca(filas);
 
+  // La consulta a BD va PRIMERO: de ahí sale CANTIDAD_NEUMATICOS, que decide qué
+  // posiciones y qué rangos se le exigen a cada placa. No depende de la validación
+  // estructural, así que adelantarla no cambia ningún resultado.
+  const { erroresPorFila, infoPorCodigo, vehiculoPorPlaca, kmBasePorPlaca } = await validarContraBD(db, BD_SCHEMA, filas);
+
   for (const [placa, filasGrupo] of grupos) {
+    const cfgVehiculo = obtenerConfigVehiculo(
+      campo(vehiculoPorPlaca.get(placa) ?? {}, 'CANTIDAD_NEUMATICOS')
+    );
+
     const erroresFilas = [];
     for (const fila of filasGrupo) {
-      const errs = validarFilaEstructura(fila);
+      const errs = validarFilaEstructura(fila, cfgVehiculo);
       if (errs.length) erroresFilas.push({ fila: fila._fila, codigo: fila.CODIGO, errores: errs });
     }
-    const erroresGrupo = validarGrupoEstructura(placa, filasGrupo);
+    const erroresGrupo = validarGrupoEstructura(placa, filasGrupo, cfgVehiculo);
     reportePorPlaca.set(placa, { filas: filasGrupo, erroresFilas, erroresGrupo });
   }
-
-  const { erroresPorFila, infoPorCodigo, vehiculoPorPlaca, kmBasePorPlaca } = await validarContraBD(db, BD_SCHEMA, filas);
 
   for (const [placa, rep] of reportePorPlaca) {
     for (const fila of rep.filas) {
