@@ -12,7 +12,12 @@ const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT';
 
 async function obtenerInspeccionesPorPlaca(placa) {
   const rows = await db.query(
-    `SELECT NV.ID, NV.PLACA, NV.KILOMETRAJE, NV.FECHA_INSPECCION, NV.TIPO_TERRENO, NV.RETEN
+    // FECHA_TIEMPO es cuando se REGISTRO la inspeccion en el sistema, que no
+    // siempre es el dia que se inspecciono (FECHA_INSPECCION) — la web la
+    // muestra como "Reg. <fecha>" en cada fila del historial. Mismo DATE()
+    // que usa poMantenimientoController.getInspeccionesPorPlaca.
+    `SELECT NV.ID, NV.PLACA, NV.KILOMETRAJE, NV.FECHA_INSPECCION,
+            DATE(NV.FECHA_TIEMPO) AS FECHA_TIEMPO, NV.TIPO_TERRENO, NV.RETEN
        FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE NV
       WHERE NV.PLACA = ? AND NV.FECHA_INSPECCION IS NOT NULL
       ORDER BY NV.ID DESC`,
@@ -24,6 +29,7 @@ async function obtenerInspeccionesPorPlaca(placa) {
     placa: r.PLACA,
     kilometraje: r.KILOMETRAJE,
     fechaInspeccion: r.FECHA_INSPECCION,
+    fechaRegistro: r.FECHA_TIEMPO,
     tipoTerreno: r.TIPO_TERRENO,
     reten: r.RETEN,
   }));

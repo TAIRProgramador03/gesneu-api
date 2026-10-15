@@ -5,6 +5,34 @@ const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
  * Service Layer for Neumáticos Normalizados
  * Maneja la lógica de negocio y la traducción entre el Frontend (Texto) y el Backend Normalizado (IDs)
  */
+/**
+ * Formatea una fecha para MOSTRARLA en un mensaje, sin pasar por `new Date()`.
+ *
+ * Bug real reportado por el usuario (12-oct-2026): el mensaje de rechazo de
+ * reubicacion decia "Ultima: 5/10/2026" cuando NEU_VKILOMETRAJE tenia
+ * 2026-10-06 — un dia menos. La causa: `new Date('2026-10-06')` interpreta la
+ * cadena como medianoche UTC, y `toLocaleDateString()` la traduce a hora local
+ * (UTC-5 en Peru), que son las 19:00 del dia ANTERIOR.
+ *
+ * Como estas fechas vienen de columnas DATE (sin hora, sin zona), convertirlas
+ * a un instante no aporta nada y solo puede restar un dia. Se formatea el
+ * texto directamente, que es lo que ya hace la app movil en su historial — y
+ * el motivo por el que ahi la fecha siempre se vio bien.
+ *
+ * OJO: esto es SOLO presentacion. El conteo de dias de la regla de 4 dias
+ * sigue como estaba a proposito: cuenta un dia de mas por este mismo efecto,
+ * pero compara contra `> 4`, y los dos desfases se cancelan dando la ventana
+ * correcta (hoy y 3 atras). Cambiar el conteo AMPLIARIA la ventana a 5 dias.
+ */
+function formatearFechaParaMensaje(valor) {
+    if (!valor) return 'Nunca';
+    const texto = valor instanceof Date ? valor.toISOString().slice(0, 10) : String(valor).slice(0, 10);
+    const partes = texto.split('-');
+    if (partes.length !== 3) return texto;
+    const [anio, mes, dia] = partes;
+    return `${dia}/${mes}/${anio}`;
+}
+
 const neumaticoService = {
 
     /**
@@ -319,7 +347,7 @@ const neumaticoService = {
         }
 
         if (dias > 4) {
-            const ultimaFecha = resInsp && resInsp[0] ? new Date(resInsp[0].FECHA_SUCESO).toLocaleDateString() : 'Nunca';
+            const ultimaFecha = formatearFechaParaMensaje(resInsp && resInsp[0] ? resInsp[0].FECHA_SUCESO : null);
             throw new Error(`REGLA DE NEGOCIO: No se puede reubicar neumáticos del vehículo ${PLACA} sin una inspección reciente (Máx 4 días). Última: ${ultimaFecha}`);
         }
 

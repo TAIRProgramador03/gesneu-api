@@ -13,6 +13,7 @@ async function obtenerSnapshotVehiculos(talleres) {
       TRIM(VE.NUMPLA)         AS PLACA,
       TRIM(PM.DESCRIPCION)    AS MARCA,
       TRIM(PMO.DESMODGEN)     AS MODELO,
+      TRIM(VE.COLOR)          AS COLOR,
       VE.KILOMETRAJE          AS KILOMETRAJE_VEHICULO,
       kmUlt.KILOMETRAJE_GESNEU AS KILOMETRAJE_GESNEU,
       klm.FECHA_INSPECCION    AS FECHA_KM,
@@ -33,6 +34,19 @@ async function obtenerSnapshotVehiculos(talleres) {
         WHEN 2 THEN 'LOGISTICA'
         ELSE 'SIN RETEN'
       END AS RETEN,
+      -- Cuántas posiciones de neumático tiene este vehículo (2=moto, 5=auto/
+      -- camioneta, 7=camión eje trasero doble) — mismo CASE que ya usa
+      -- poBuscarVehiculoController.js (la búsqueda real de placa en la web),
+      -- replicado acá porque el snapshot mobile no lo traía (gap real: hasta
+      -- ahora mobile asumía que TODO vehículo tenía 5 posiciones).
+      CASE VE.RECMEN3
+        WHEN 1 THEN 5
+        WHEN 2 THEN 7
+        WHEN 3 THEN 8
+        WHEN 4 THEN 2
+        WHEN 5 THEN 6
+        ELSE 0
+      END AS CANTIDAD_NEUMATICOS,
       (
         SELECT COUNT(*) FROM ${BD_SCHEMA}.NEU_INFORMACION NI
         WHERE TRIM(NI.PLACA_ACTUAL) = TRIM(VE.NUMPLA)
@@ -90,6 +104,7 @@ async function obtenerSnapshotVehiculos(talleres) {
     proyecto: row.TALLER,
     marca: row.MARCA,
     modelo: row.MODELO,
+    color: row.COLOR,
     // Preferimos el kilometraje que registra el propio módulo de
     // neumáticos (más reciente/confiable, cuenta tanto inspección como
     // asignación — ver join `kmUlt` arriba) y caemos al de PO_VEHICULO si
@@ -118,6 +133,7 @@ async function obtenerSnapshotVehiculos(talleres) {
     tiene_inspeccion_previa: row.FECHA_KM != null ? 1 : 0,
     total_neumaticos: row.TOTAL_NEUMATICOS ?? 0,
     tiene_alertas: (row.NEUMATICOS_ALERTA ?? 0) > 0 ? 1 : 0,
+    cantidad_neumaticos: row.CANTIDAD_NEUMATICOS ?? null,
   }));
 }
 

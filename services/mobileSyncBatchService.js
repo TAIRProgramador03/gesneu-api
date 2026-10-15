@@ -67,6 +67,106 @@ async function obtenerUltimoMovimiento(idNeumatico) {
 }
 
 /**
+ * Ultima fila de NEU_VKILOMETRAJE de la placa: es la MISMA de la que
+ * mobileVehiculosService deriva `kilometraje`, `fecha_asignacion` y
+ * `fecha_ultima_inspeccion` para el snapshot. O sea, es exactamente el dato
+ * contra el que el telefono valido antes de encolar — por eso el chequeo de
+ * aca abajo no puede contradecir al del cliente.
+ */
+async function ultimoKilometrajeDePlaca(placa) {
+  if (!placa) return null;
+  const filas = await db.query(
+    `SELECT KILOMETRAJE, FECHA_INSPECCION, FECHA_ASIGNACION
+       FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE
+      WHERE PLACA = ? ORDER BY ID DESC FETCH FIRST 1 ROW ONLY`,
+    [placa]
+  );
+  return filas[0] ?? null;
+}
+
+/**
+ * Red de seguridad del lado del servidor para los dos limites que el backend
+ * real NO valida: el techo de kilometraje y que la fecha no sea futura.
+ *
+ * Por que existe: `registrarInspeccion`/`asignarNeumatico` solo exigen que el
+ * kilometraje avance (y en el caso de inspeccion, contra ODOMETRO_AL_MONTAR
+ * del propio neumatico, no contra la placa). El tope de 25.000 km vive
+ * unicamente en el cliente — asi que un APK viejo, o con un bug, podia
+ * escribir un kilometraje absurdo y nadie lo frenaba. Caso real que lo
+ * motivo: CFN-742 dejaba poner 9.999.945 km.
+ *
+ * Esto corre SOLO en el camino del movil (aplicarInspeccion/aplicarAsignacion).
+ * No se toco `neumaticoService`, que es codigo compartido con la web: agregarle
+ * el tope ahi haria que la web empiece a rechazar cosas que hoy acepta, y esa
+ * es una decision de negocio, no un refactor.
+ *
+ * DELIBERADAMENTE NO se replican acá las otras dos reglas de fecha del cliente
+ * (la ventana de "hoy-3" y que la fecha sea posterior a la ultima inspeccion),
+ * aunque tambien sean solo-cliente. El motivo es el trabajo offline: una
+ * inspeccion valida el dia que se registro puede sincronizarse recien 5 dias
+ * despues, y en ese momento ya caeria fuera de la ventana — el servidor
+ * rechazaria trabajo legitimo que el tecnico ya dio por hecho. Son reglas de
+ * CAPTURA, que se evaluan cuando el dato se ingresa; aplicarlas al sincronizar
+ * seria aplicarlas en el momento equivocado. El tope de kilometraje no tiene
+ * ese problema: no depende de cuando se sincroniza.
+ */
+const TOPE_KM = 25000;
+
+function rechazarSi(condicion, mensaje) {
+  if (condicion) throw new Error(mensaje);
+}
+
+async function validarLimitesInspeccion(op) {
+  const km = Number(op.payload.kilometro);
+  const referencia = await ultimoKilometrajeDePlaca(op.placa);
+
+  if (referencia && Number.isFinite(km)) {
+    const anterior = Number(referencia.KILOMETRAJE) || 0;
+    rechazarSi(
+      km >= anterior + TOPE_KM,
+      `El kilometraje (${km}) supera en mas de ${TOPE_KM} km al ultimo registrado de la placa (${anterior}).`
+    );
+  }
+
+  rechazarSi(
+    esFechaFutura(op.payload.fechaInspeccion),
+    `La fecha de inspeccion (${op.payload.fechaInspeccion}) es posterior a hoy.`
+  );
+}
+
+async function validarLimitesAsignacion(op) {
+  // OJO: en ASIGNACION el kilometraje viaja como `odometro`, no como
+  // `kilometro` — mismo nombre distinto que ya causo un bug real al copiar
+  // este bloque entre tipos de operacion.
+  const km = Number(op.payload.odometro);
+  const referencia = await ultimoKilometrajeDePlaca(op.placa);
+
+  if (referencia && Number.isFinite(km)) {
+    const anterior = Number(referencia.KILOMETRAJE) || 0;
+    rechazarSi(
+      km > anterior + TOPE_KM,
+      `El kilometraje (${km}) supera en mas de ${TOPE_KM} km al ultimo registrado de la placa (${anterior}).`
+    );
+  }
+
+  rechazarSi(
+    esFechaFutura(op.payload.fechaAsignacion),
+    `La fecha de asignacion (${op.payload.fechaAsignacion}) es posterior a hoy.`
+  );
+}
+
+/** Compara solo la parte YYYY-MM-DD, que es como viajan las fechas del movil. */
+function esFechaFutura(fecha) {
+  if (!fecha) return false;
+  const soloFecha = String(fecha).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(soloFecha)) return false;
+  const ahora = new Date();
+  const offset = ahora.getTimezoneOffset() * 60000;
+  const hoy = new Date(ahora.getTime() - offset).toISOString().slice(0, 10);
+  return soloFecha > hoy;
+}
+
+/**
  * INSPECCION — reusa neumaticoService.registrarInspeccion tal cual (misma
  * función/reglas que la web real). EnTransito no existe en el wizard móvil,
  * va en false.
@@ -89,6 +189,8 @@ async function obtenerUltimoMovimiento(idNeumatico) {
  * como último recurso solo para no reventar el NOT NULL.
  */
 async function aplicarInspeccion(op, usuarioId) {
+  await validarLimitesInspeccion(op);
+
   const dataServicio = {
     CODIGO: op.payload.codigo,
     REMANENTE: op.payload.remanente,
@@ -135,6 +237,8 @@ async function posicionYaOcupada(placa, posicion) {
  * posicionYaOcupada, ver arriba.
  */
 async function aplicarAsignacion(op, usuarioId) {
+  await validarLimitesAsignacion(op);
+
   if (op.placa && op.payload.posicion) {
     const ocupada = await posicionYaOcupada(op.placa, op.payload.posicion);
     if (ocupada) {
@@ -177,11 +281,19 @@ async function aplicarAsignacion(op, usuarioId) {
  * correcto.
  *
  * En cambio, verifico que la posición destino esté ocupada por el
- * neumático ESPERADO (el otro miembro del intercambio, `codigoEnDestino`
- * en el payload) — o ya vacía (si el otro lado del intercambio ya se
- * aplicó primero en este mismo batch). Si está ocupada por un neumático
- * DISTINTO al esperado, algo cambió desde que el técnico armó el
- * intercambio (otro técnico ya modificó esa posición) — se rechaza.
+ * neumático ESPERADO (`codigoEnDestino` en el payload) — o ya vacía (si su
+ * ocupante salió en una operación anterior del mismo lote). Si está ocupada
+ * por un neumático DISTINTO al esperado, algo cambió desde que el técnico
+ * armó la reubicación (otro técnico ya modificó esa posición) — se rechaza.
+ *
+ * Vale para rotaciones de N posiciones, no solo intercambios de a 2: como
+ * cada neumático va a un destino distinto (es una permutación), al momento
+ * de aplicar una operación su destino solo puede estar (a) con su ocupante
+ * original todavía ahí, o (b) ya vacío. Nunca con un tercero — y si lo
+ * estuviera, es justo el caso que hay que rechazar.
+ *
+ * `codigoEsperado = null` significa "esta posición estaba libre cuando el
+ * técnico armó el movimiento": entonces solo pasa si sigue libre.
  */
 async function posicionCoincideConEsperado(placa, posicion, codigoEsperado) {
   const filas = await db.query(
@@ -207,8 +319,17 @@ async function posicionCoincideConEsperado(placa, posicion, codigoEsperado) {
  * posicionCoincideConEsperado, ver arriba.
  */
 async function aplicarReubicacion(op, usuarioId) {
-  if (op.placa && op.payload.posicionFin && op.payload.codigoEnDestino) {
-    const ok = await posicionCoincideConEsperado(op.placa, op.payload.posicionFin, op.payload.codigoEnDestino);
+  // Tambien se valida cuando codigoEnDestino es null (el tecnico movio el
+  // neumatico a una posicion que estaba LIBRE): ahi el guard exige que siga
+  // libre, o sea rechaza si alguien mas la ocupo mientras tanto. Antes la
+  // condicion se saltaba el chequeo entero cuando el valor era null.
+  const traeExpectativaDeDestino = Object.prototype.hasOwnProperty.call(op.payload, 'codigoEnDestino');
+  if (op.placa && op.payload.posicionFin && traeExpectativaDeDestino) {
+    const ok = await posicionCoincideConEsperado(
+      op.placa,
+      op.payload.posicionFin,
+      op.payload.codigoEnDestino ?? null
+    );
     if (!ok) {
       throw new Error(
         `La posicion ${op.payload.posicionFin} de la placa ${op.placa} ya no tiene el neumatico esperado - probablemente otro tecnico ya la modifico.`
@@ -232,6 +353,38 @@ async function aplicarReubicacion(op, usuarioId) {
   };
   await neumaticoService.reubicarNeumatico(dataServicio, usuarioId);
   return obtenerUltimoMovimiento(op.idNeumatico);
+}
+
+/**
+ * Inserta las filas pendientes de NEU_VKILOMETRAJE y las saca del mapa.
+ *
+ * Con `placa`, vuelca SOLO las de esa placa — eso es lo que permite correrlo a
+ * mitad del lote sin alterar el orden cronologico del resto. El orden importa
+ * dentro de una misma placa: cada INSERT de INSPECCION arrastra
+ * FECHA_ASIGNACION de "la ultima fila por ID" de esa placa, y esa misma ultima
+ * fila es la que leen registrarInspeccion/reubicarNeumatico como "ultimo
+ * odometro/fecha conocidos". Entre placas distintas el orden es indiferente.
+ */
+async function volcarEventosVkilometraje(eventos, placa = null) {
+  const pendientes = [...eventos.entries()]
+    .filter(([, datos]) => placa === null || datos.placa === placa)
+    .sort(([, a], [, b]) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
+
+  for (const [clave, datos] of pendientes) {
+    eventos.delete(clave);
+    try {
+      if (datos.tipo === 'INSPECCION') {
+        await registrarKilometrajeInspeccion(datos.placa, datos);
+      } else {
+        await registrarKilometrajeAsignacion(datos.placa, datos);
+      }
+    } catch (err) {
+      console.error(`[mobileSyncBatchService] Error registrando kilometraje de ${datos.placa} (${datos.tipo}):`, err);
+      // No se revierten los movimientos ya aplicados por esto — el tecnico ya
+      // veria sus inspecciones/asignaciones guardadas; el kilometraje del
+      // vehiculo queda desactualizado hasta el proximo evento.
+    }
+  }
 }
 
 /**
@@ -260,6 +413,197 @@ async function aplicarDesasignacion(op, usuarioId, tipoMovimiento) {
   return obtenerUltimoMovimiento(op.idNeumatico);
 }
 
+/**
+ * Estado real de un neumatico por codigo: donde esta montado, en que estado y
+ * cuantas veces se recupero. `null` si el codigo no existe en el padron.
+ *
+ * No vive en neumaticoService porque ninguna de sus funciones necesita leer
+ * esto antes de escribir — `desasignarNeumatico` confia en que el neumatico
+ * esta donde el formulario dice, igual que `reubicarNeumatico` confia en
+ * POSICION_INICIAL. En la web eso alcanza (el modal arma todo contra un estado
+ * que acaba de leer, y se envia en segundos); con el movil offline pueden
+ * pasar horas entre que el tecnico arma el reemplazo y que sincroniza.
+ */
+async function estadoNeumaticoPorCodigo(codigo) {
+  const filas = await db.query(
+    `SELECT NI.ID_NEUMATICO,
+            NI.ID_ESTADO,
+            TRIM(NI.PLACA_ACTUAL)    AS PLACA_ACTUAL,
+            TRIM(NI.POSICION_ACTUAL) AS POSICION_ACTUAL,
+            NI.QTY_RECUPERADO
+       FROM ${BD_SCHEMA}.NEU_INFORMACION NI
+       INNER JOIN ${BD_SCHEMA}.NEU_PADRON NP ON NP.ID = NI.ID_NEUMATICO
+      WHERE TRIM(NP.CODIGO) = ?
+      FETCH FIRST 1 ROW ONLY`,
+    [String(codigo ?? '').trim()]
+  );
+  return filas[0] ?? null;
+}
+
+/**
+ * La salida de almacen (S60) que el ERP tiene que tener registrada para que
+ * este cambio sea legitimo. Es la MISMA consulta que hace
+ * `desasignarConReemplazo` (poMantenimientoController.js) — si aca se filtrara
+ * distinto, el movil aceptaria algo que la web rechaza o al reves. Cualquier
+ * cambio alla tiene que replicarse aca Y en mobileSalidasService.js (el
+ * snapshot que el telefono usa para validar lo mismo SIN senal).
+ */
+async function existeSalidaAlmacen(placa, par) {
+  const filas = await db.query(
+    `SELECT 1
+       FROM ${BD_SCHEMA}.TMOVD AS SINVSE
+       INNER JOIN ${BD_SCHEMA}.TMOVH AS SINVSEH
+         ON SINVSEH.MHCMOV = SINVSE.MDCMOV
+        AND SINVSEH.MHTMOV = SINVSE.MDTMOV
+        AND SINVSEH.MHALMA = SINVSE.MDALMA
+        AND SINVSEH.MHCOMP = SINVSE.MDCOMP
+        AND TRIM(SINVSEH.MHREF3) = ?
+        AND (TRIM(SINVSEH.MHREF6) LIKE '%NEU'
+          OR TRIM(SINVSEH.MHREF6) LIKE '%SIN'
+          OR TRIM(SINVSEH.MHREF6) LIKE '%COB')
+      WHERE SINVSE.MDCMOV = 'S' AND SINVSE.MDTMOV = '60'
+        AND (SINVSE.MDCOAR LIKE '140%' OR SINVSE.MDCOAR LIKE '240%')
+        AND TRIM(SINVSE.MDDRE7) = ?
+      FETCH FIRST 1 ROW ONLY`,
+    [String(placa ?? '').trim(), par]
+  );
+  return filas.length > 0;
+}
+
+const TIPOS_MOVIMIENTO_SALIENTE = ['RECUPERADO', 'BAJA DEFINITIVA'];
+
+/**
+ * REEMPLAZO — "sale este neumatico, entra este otro a la misma posicion", en
+ * UNA sola operacion de cola.
+ *
+ * Reemplaza a los viejos DESASIGNAR_RECUPERADO/DESASIGNAR_BAJA, que nunca se
+ * construyeron: en el backend real no existe "solo desasignar". La unica ruta
+ * viva es `desasignarConReemplazo`, que exige el neumatico entrante si o si.
+ * Esto es el equivalente movil de esa ruta, de a una posicion por vez.
+ *
+ * Los chequeos de abajo corren ANTES de escribir nada, y todos son rechazos
+ * reales (no hay reintento): el usuario confirmo que la S60 se crea SIEMPRE
+ * antes del cambio fisico ("primero debe existir la S60 para poder hacer la
+ * salida"), asi que una S60 ausente al sincronizar no es "todavia no" sino un
+ * dato mal armado. El telefono ya valido lo mismo offline contra
+ * `salidas_cache` antes de dejar armar el reemplazo — si llega aca sin S60, es
+ * porque alguien la anulo o el par se escribio distinto.
+ *
+ * OJO con lo que NO se replica de `desasignarConReemplazo`: su validacion de
+ * "ninguna posicion puede quedar vacia". Aca no hace falta y seria incorrecta:
+ * la posicion se libera y se vuelve a llenar dentro de la MISMA operacion, asi
+ * que nunca queda vacia. En la web esa validacion existe porque el modal manda
+ * las desasignaciones y las asignaciones como dos listas sueltas que podrian
+ * no emparejar.
+ *
+ * Tampoco se toca NEU_VKILOMETRAJE, igual que la web: `desasignarConReemplazo`
+ * no inserta ninguna fila ahi (a diferencia de INSPECCION/ASIGNACION, que si).
+ */
+async function aplicarReemplazo(op, usuarioId) {
+  const payload = op.payload ?? {};
+  const codigoSaliente = String(payload.codigoSaliente ?? '').trim();
+  const codigoEntrante = String(payload.codigoEntrante ?? '').trim();
+  const posicion = String(payload.posicion ?? '').trim();
+  const tipoMovimiento = payload.tipoMovimientoSaliente;
+  const placa = String(op.placa ?? '').trim();
+
+  rechazarSi(
+    !codigoSaliente || !codigoEntrante,
+    'El reemplazo no trae los codigos de neumatico saliente y entrante.'
+  );
+  rechazarSi(!placa || !posicion, 'El reemplazo no trae placa o posicion.');
+  rechazarSi(
+    !TIPOS_MOVIMIENTO_SALIENTE.includes(tipoMovimiento),
+    `Tipo de movimiento invalido para el neumatico saliente: ${tipoMovimiento}. Debe ser RECUPERADO o BAJA DEFINITIVA.`
+  );
+
+  // 1. La salida de almacen, primero — mismo orden que la web.
+  const par = `${codigoEntrante}-${codigoSaliente}`;
+  const haySalida = await existeSalidaAlmacen(placa, par);
+  rechazarSi(
+    !haySalida,
+    `No se encontro una salida de almacen (S60) para la placa ${placa} con el par ${par}. Entra: ${codigoEntrante}, sale: ${codigoSaliente}.`
+  );
+
+  // 2. El saliente sigue montado donde el tecnico lo dejo. Si alguien mas ya
+  // lo movio o lo desasigno mientras el telefono estaba sin senal, esta
+  // operacion ya no describe la realidad y no se aplica.
+  const saliente = await estadoNeumaticoPorCodigo(codigoSaliente);
+  rechazarSi(!saliente, `El neumatico saliente ${codigoSaliente} no existe en el padron.`);
+  rechazarSi(
+    Number(saliente.ID_ESTADO) !== 2 ||
+      saliente.PLACA_ACTUAL !== placa ||
+      saliente.POSICION_ACTUAL !== posicion,
+    `El neumatico ${codigoSaliente} ya no esta montado en ${placa} ${posicion} - probablemente otro tecnico ya lo movio.`
+  );
+
+  // Misma regla que la web: un neumatico no se recupera dos veces.
+  rechazarSi(
+    tipoMovimiento === 'RECUPERADO' && Number(saliente.QTY_RECUPERADO) >= 1,
+    `El neumatico ${codigoSaliente} ya fue recuperado anteriormente. No se puede recuperar mas de una vez.`
+  );
+
+  // 3. El entrante sigue disponible. `asignarNeumatico` solo rechaza si ya
+  // esta ASIGNADO; aca se exige DISPONIBLE, que ademas descarta uno dado de
+  // baja definitiva (ID_ESTADO 3).
+  const entrante = await estadoNeumaticoPorCodigo(codigoEntrante);
+  rechazarSi(!entrante, `El neumatico entrante ${codigoEntrante} no existe en el padron.`);
+  rechazarSi(
+    Number(entrante.ID_ESTADO) !== 1,
+    `El neumatico ${codigoEntrante} ya no esta disponible${
+      entrante.PLACA_ACTUAL ? ` (esta montado en ${entrante.PLACA_ACTUAL})` : ''
+    } - probablemente otro tecnico ya lo asigno.`
+  );
+
+  // 4. Mismo orden que desasignarConReemplazo: sale primero, entra despues.
+  // Entre las dos llamadas la posicion queda vacia por un instante — sin
+  // transacciones no hay forma de evitarlo, y es exactamente lo que hace hoy
+  // la web (ver la limitacion documentada en CLAUDE.md).
+  //
+  // KILOMETRO y REMANENTE del saliente son casi decorativos, igual que en
+  // REUBICAR: `desasignarNeumatico` usa el odometro de NEU_VKILOMETRAJE y el
+  // REMANENTE_ACTUAL ya guardado, no lo que se le manda. Se envian igual para
+  // no divergir del shape que arma la web.
+  await neumaticoService.desasignarNeumatico(
+    {
+      CODIGO: codigoSaliente,
+      TIPO_MOVIMIENTO: tipoMovimiento,
+      TIPO_BAJA: tipoMovimiento === 'BAJA DEFINITIVA' ? payload.tipoBaja ?? null : null,
+      OBSERVACION: payload.observacionSaliente ?? null,
+      KILOMETRO: payload.kilometro,
+      REMANENTE: payload.remanenteSaliente ?? null,
+      COD_SUPERVISOR: payload.codSupervisor ?? usuarioId,
+      ID_OPERACION: payload.idOperacion ?? null,
+      EnTransito: false,
+      Taller: null,
+    },
+    usuarioId
+  );
+
+  await neumaticoService.asignarNeumatico(
+    {
+      CodigoNeumatico: codigoEntrante,
+      Remanente: payload.remanenteEntrante,
+      PresionAire: payload.presionEntrante,
+      TorqueAplicado: payload.torqueEntrante,
+      Placa: placa,
+      Posicion: posicion,
+      Odometro: payload.kilometro,
+      FechaRegistro: payload.fecha,
+      FechaAsignacion: payload.fecha,
+      COD_SUPERVISOR: payload.codSupervisor ?? usuarioId,
+      ID_OPERACION: payload.idOperacion ?? null,
+      EnTransito: false,
+      Taller: null,
+    },
+    usuarioId
+  );
+
+  // op.idNeumatico es el ENTRANTE (convencion del payload), asi que el ID que
+  // se devuelve es el del movimiento de asignacion — el ultimo de los dos.
+  return obtenerUltimoMovimiento(op.idNeumatico);
+}
+
 async function aplicarOperacion(op, usuarioId) {
   switch (op.tipoOperacion) {
     case 'INSPECCION':
@@ -268,6 +612,8 @@ async function aplicarOperacion(op, usuarioId) {
       return aplicarAsignacion(op, usuarioId);
     case 'REUBICAR':
       return aplicarReubicacion(op, usuarioId);
+    case 'REEMPLAZO':
+      return aplicarReemplazo(op, usuarioId);
     case 'DESASIGNAR_RECUPERADO':
       return aplicarDesasignacion(op, usuarioId, 'RECUPERADO');
     case 'DESASIGNAR_BAJA':
@@ -413,6 +759,19 @@ async function aplicarBatch(operaciones, usuarioId) {
     }
 
     try {
+      // BUG REAL (BTS-806, 12-oct-2026): la fila de NEU_VKILOMETRAJE de una
+      // inspeccion se insertaba recien al TERMINAR el lote, pero
+      // reubicarNeumatico lee justamente esa tabla para su regla de "maximo 4
+      // dias desde la ultima inspeccion". Un tecnico que offline inspecciono y
+      // despues reubico la misma placa veia su reubicacion RECHAZADA al
+      // sincronizar, porque el servidor todavia no tenia registrada la
+      // inspeccion que acababa de aplicar milisegundos antes. Se vuelcan las
+      // filas de esta placa antes de reubicar, asi el chequeo ve el estado
+      // real.
+      if (op.tipoOperacion === 'REUBICAR' && op.placa) {
+        await volcarEventosVkilometraje(eventosVkilometraje, op.placa);
+      }
+
       const idMovimiento = await aplicarOperacion(op, usuarioId);
       await registrarResultadoSync({
         idLocal: op.idLocal,
@@ -497,25 +856,7 @@ async function aplicarBatch(operaciones, usuarioId) {
   // más nuevo antes que el viejo, la tabla quedaría con el viejo como "el
   // más reciente" — no es solo prolijidad, rompe esa lógica para cualquier
   // evento futuro de esa placa.
-  const eventosOrdenados = [...eventosVkilometraje.values()].sort((a, b) =>
-    a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0
-  );
-
-  for (const datos of eventosOrdenados) {
-    try {
-      if (datos.tipo === 'INSPECCION') {
-        await registrarKilometrajeInspeccion(datos.placa, datos);
-      } else {
-        await registrarKilometrajeAsignacion(datos.placa, datos);
-      }
-    } catch (err) {
-      console.error(`[mobileSyncBatchService] Error registrando kilometraje de ${datos.placa} (${datos.tipo}):`, err);
-      // No revertimos los movimientos ya aplicados por esto — el técnico ya
-      // vería sus inspecciones/asignaciones guardadas; el kilometraje del
-      // vehículo queda desactualizado hasta el próximo evento, se loguea
-      // para revisar.
-    }
-  }
+  await volcarEventosVkilometraje(eventosVkilometraje);
 
   return resultados;
 }
