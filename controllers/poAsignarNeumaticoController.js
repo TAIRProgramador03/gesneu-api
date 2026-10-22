@@ -1,4 +1,5 @@
 const db = require("../config/db");
+const colaS60Service = require("../services/colaS60Service");
 require('dotenv').config();
 const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 
@@ -10,6 +11,14 @@ const asignarNeumatico = async (req, res) => {
     const data = Array.isArray(req.body) ? req.body : [req.body];
     const UsuarioCrea = req.session.user.usuario.trim().toUpperCase();
     const resultados = [];
+
+    // Cola obligatoria de S60: si hay pendientes, solo se puede trabajar la
+    // placa de la cabeza. Sin pendientes no bloquea nada.
+    const placaAsignacion = data[0]?.Placa ?? null;
+    if (placaAsignacion) {
+        const bloqueo = await colaS60Service.bloquearSiPlacaNoHabilitada(req.session.user, placaAsignacion);
+        if (bloqueo) return res.status(bloqueo.status).json(bloqueo.body);
+    }
 
     let odometroKV = 0
     let placaKV = ''

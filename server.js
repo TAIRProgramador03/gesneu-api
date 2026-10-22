@@ -21,6 +21,7 @@ const poMantenimientoRoutes = require("./routes/poMantenimientoRoutes");
 const poReporteRoutes = require("./routes/poReporteRoutes");
 const poMapaRoutes = require("./routes/poMapaRoutes");
 const poMobileRoutes = require("./routes/poMobileRoutes");
+const colaS60Routes = require("./routes/colaS60Routes");
 
 const swaggerUi = require("swagger-ui-express");
 const swaggerJSDoc = require("swagger-jsdoc");
@@ -149,6 +150,7 @@ app.use("/api/po-movimiento", porMovimientoRoutes);
 app.use("/api", poMantenimientoRoutes);
 app.use("/api/po-reportes", poReporteRoutes);
 app.use("/api/mapa", poMapaRoutes)
+app.use("/api/cola-s60", colaS60Routes);
 app.get('/api/health', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const dbOk = await db.validate();

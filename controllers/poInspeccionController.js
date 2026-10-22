@@ -1,4 +1,5 @@
 const db = require("../config/db");
+const colaS60Service = require("../services/colaS60Service");
 require('dotenv').config();
 const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 
@@ -35,6 +36,14 @@ const crearInspeccion = async (req, res) => {
 
     // Obtenemos el usuario de la sesión o del body si viene
     const usuario = (req.session && req.session.user && req.session.user.usuario) ? req.session.user.usuario : (req.body.USUARIO_SUPER || 'SISTEMA');
+
+    // Cola obligatoria de S60: si hay pendientes, solo se puede inspeccionar la
+    // placa de la cabeza. Sin pendientes no bloquea nada.
+    const placaInspeccion = datosArray[0]?.PLACA ?? null;
+    if (placaInspeccion && req.session?.user) {
+        const bloqueo = await colaS60Service.bloquearSiPlacaNoHabilitada(req.session.user, placaInspeccion);
+        if (bloqueo) return res.status(bloqueo.status).json(bloqueo.body);
+    }
 
     try {
 

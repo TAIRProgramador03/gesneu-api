@@ -1,4 +1,5 @@
 const db = require("../config/db");
+const colaS60Service = require("../services/colaS60Service");
 require('dotenv').config();
 const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 
@@ -31,6 +32,11 @@ const registrarReubicacionNeumatico = async (req, res) => {
 
         if (datosArray.length > 0) {
             const placa = datosArray[0].PLACA;
+
+            // Cola obligatoria de S60: si hay pendientes, solo se puede trabajar
+            // la placa de la cabeza. Sin pendientes no bloquea nada.
+            const bloqueo = await colaS60Service.bloquearSiPlacaNoHabilitada(req.session.user, placa);
+            if (bloqueo) return res.status(bloqueo.status).json(bloqueo.body);
 
             const sqlPosicionesActuales = `
                 SELECT NI.POSICION_ACTUAL, COUNT(*) AS TOTAL
@@ -252,6 +258,41 @@ const desasignarConReemplazo = async (req, res) => {
 
         const bajasDefinitivas = desasignaciones;
 
+        // Cola obligatoria de S60.
+        //
+        // Con pendientes: solo se puede trabajar la placa de la cabeza, y cada
+        // par entrante-saliente tiene que ser una de SUS lineas pendientes.
+        // Sin pendientes: no se bloquea por placa, pero sigue vigente la regla
+        // de siempre (tiene que existir la S60), porque una S60 anterior a la
+        // fecha de corte no aparece en la cola y ese cambio igual es legitimo.
+        const placaOperacion =
+            asignaciones[0]?.Placa ?? bajasDefinitivas[0]?.PLACA ?? null;
+        const talleresUsuario = colaS60Service.talleresDeSesion(req.session.user);
+        const cabezaCola = placaOperacion
+            ? await colaS60Service.obtenerCabeza(talleresUsuario)
+            : null;
+
+        if (cabezaCola) {
+            const mismaPlaca =
+                String(placaOperacion).trim().toUpperCase() === cabezaCola.placa.toUpperCase();
+            if (!mismaPlaca) {
+                return res.status(409).json({
+                    error: 'S60 pendiente',
+                    detalle: colaS60Service.mensajeBloqueo(cabezaCola),
+                    colaS60: {
+                        placaHabilitada: cabezaCola.placa,
+                        fecha: cabezaCola.fecha,
+                        hora: cabezaCola.hora,
+                        lineasPendientes: cabezaCola.lineas.length,
+                    },
+                });
+            }
+        }
+
+        // Lineas de la cabeza que esta operacion va a cerrar. Se llenan al
+        // validar y se graban recien cuando todo el cambio salio bien.
+        const lineasACerrar = [];
+
         if (bajasDefinitivas.length > 0) {
             const movimientosPorPosicion = (() => {
                 const map = new Map();
@@ -294,6 +335,24 @@ const desasignarConReemplazo = async (req, res) => {
 
             for (const mov of movimientosPorPosicion) {
                 const nuevoUsado = `${mov.nuevo}-${mov.baja}`;
+
+                if (cabezaCola) {
+                    // Ya no alcanza con que la S60 exista en algun lado: tiene
+                    // que ser una linea todavia pendiente de la S60 que toca.
+                    const linea = colaS60Service.buscarLineaPorPar(cabezaCola, mov.nuevo, mov.baja);
+                    if (!linea) {
+                        return res.status(400).json({
+                            error: `El cambio de la posición ${mov.pos} no corresponde a la S60 pendiente`,
+                            detalle:
+                                `Entra (nuevo): ${mov.nuevo} / Sale (usado): ${mov.baja}. ` +
+                                `La S60 que toca regularizar es la de la placa ${cabezaCola.placa} ` +
+                                `del ${colaS60Service.formatearFecha(cabezaCola.fecha)}.`
+                        });
+                    }
+                    lineasACerrar.push({ linea, posicion: mov.pos });
+                    continue;
+                }
+
                 const rows = await db.query(sqlVerificarSalidas, [mov.placa, nuevoUsado]);
                 if (rows.length === 0) {
                     return res.status(400).json({
@@ -428,6 +487,52 @@ const desasignarConReemplazo = async (req, res) => {
         //  PASO 2: Ejecutar ASIGNACIONES primero
         for (const asignacion of asignaciones) {
             await neumaticoService.asignarNeumatico(asignacion, usuario);
+        }
+
+        // PASO 3: Cerrar las lineas de S60 que este cambio regularizo.
+        //
+        // Va DESPUES del cambio y a proposito no puede tumbarlo: el trabajo
+        // fisico ya se hizo, el neumatico ya esta montado, y fallar aca para
+        // "revertir" solo dejaria la base peor. Si el insert falla, queda el log
+        // y la linea sigue figurando pendiente.
+        //
+        // Eso casi nunca tranca la cola: como una linea solo entra si el
+        // saliente sigue montado en esa placa, una vez hecho el cambio deja de
+        // cumplir la condicion y se cae sola del listado.
+        for (const { linea, posicion } of lineasACerrar) {
+            try {
+                // Los dos movimientos del cambio acaban de crearse arriba; se
+                // buscan porque el INSERT compartido no devuelve la identidad
+                // que genera la base. Se guardan los dos para que la fila cuente
+                // la historia completa: que salio y que entro.
+                const [idMovimientoSalida, idMovimientoEntrada] = await Promise.all([
+                    colaS60Service.buscarIdUltimoMovimiento(linea.codigoSaliente, cabezaCola.placa),
+                    colaS60Service.buscarIdUltimoMovimiento(linea.codigoEntrante, cabezaCola.placa),
+                ]);
+
+                await colaS60Service.registrarRegularizacion({
+                    almacen: cabezaCola.almacen,
+                    comprobante: cabezaCola.comprobante,
+                    correlativo: linea.correlativo,
+                    fecha: cabezaCola.fecha,
+                    hora: cabezaCola.hora,
+                    placa: cabezaCola.placa,
+                    par: linea.par,
+                    codigoEntrante: linea.codigoEntrante,
+                    codigoSaliente: linea.codigoSaliente,
+                    idMovimientoSalida,
+                    idMovimientoEntrada,
+                    taller: cabezaCola.taller,
+                    usuario,
+                });
+            } catch (errCola) {
+                console.error(
+                    `❌ [colaS60] El cambio de la posición ${posicion} se guardó, pero no se pudo ` +
+                    `marcar la S60 ${cabezaCola.almacen}-${cabezaCola.comprobante}-${linea.correlativo} ` +
+                    `como regularizada:`,
+                    errCola.message
+                );
+            }
         }
 
         res.status(201).json({
