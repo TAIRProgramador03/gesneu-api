@@ -194,29 +194,17 @@ async function obtenerPendientes(usuario, limite = 50) {
       AND (SINVSE.MDCOAR LIKE '140%' OR SINVSE.MDCOAR LIKE '240%')
       AND SINVSE.MDFECH >= ?
 
-      -- Y el vale tiene que haberse emitido en un taller del usuario.
+      -- NO se filtra por el taller donde se emitio el vale, a proposito.
       --
-      -- Son DOS condiciones distintas y hacen falta las dos: la placa puede
-      -- haber pasado a otra operacion despues, pero la S60 se emitio en un
-      -- taller concreto y es ese taller el que debe regularizarla.
+      -- Se probo cruzar TRIM(PT.CH_SERI_TALLER) = SUBSTR(MHREF6, 1, 4) contra
+      -- los talleres del usuario —que es como lo hace el reporte de neumaticos
+      -- despachados— y deja un hueco que no se puede cerrar: si una placa pasa
+      -- a otra operacion, su S60 vieja no le aparece a NADIE. Al dueño anterior
+      -- lo descarta el filtro de operacion (ya no es su placa) y al nuevo lo
+      -- descartaria el de taller (el vale se emitio en el taller del otro). Esa
+      -- S60 quedaria pendiente para siempre, sin forma de regularizarla.
       --
-      -- El vinculo NO es MHALMA: en todo el sistema no hay ninguna relacion
-      -- entre el almacen del movimiento y PO_TALLER. Lo que si existe —y ya
-      -- corre en produccion, en el reporte de neumaticos despachados
-      -- (poReporteController.js:711-713)— es que los primeros 4 caracteres de
-      -- MHREF6 son la serie del taller. Es el mismo campo que ya miramos arriba
-      -- por su final (NEU/SIN/COB): resulta ser SERIE + TIPO.
-      --
-      -- EXISTS y no INNER JOIN: un usuario puede tener varios talleres y un
-      -- JOIN multiplicaria la fila de S60 por cada uno que cruce.
-      AND EXISTS (
-        SELECT 1
-        FROM ${BD_SCHEMA}.MAE_TALLER_X_USUARIO MTXU
-        INNER JOIN ${BD_SCHEMA}.PO_TALLER PT
-          ON PT.ID = MTXU.ID_TALLER
-        WHERE TRIM(MTXU.CH_CODI_USUARIO) = ?
-          AND TRIM(PT.CH_SERI_TALLER) = TRIM(SUBSTR(SINVSEH.MHREF6, 1, 4))
-      )
+      -- Manda quien tiene la placa HOY: es el unico que puede hacer el cambio.
       ${SQL_PAR_VALIDO}
       AND NOT EXISTS (
         SELECT 1
@@ -248,10 +236,9 @@ async function obtenerPendientes(usuario, limite = 50) {
     FETCH FIRST ${Number(limite)} ROWS ONLY
   `;
 
-  // El orden sigue la posicion en el texto: el usuario va primero en el JOIN de
-  // la operacion, despues la fecha, y el usuario otra vez en el EXISTS del
-  // taller.
-  const filas = await db.query(sql, [codigoUsuario, desde, codigoUsuario]);
+  // El orden importa: el usuario va en el JOIN, que esta antes que el WHERE
+  // donde va la fecha.
+  const filas = await db.query(sql, [codigoUsuario, desde]);
 
   const pendientes = [];
   for (const fila of filas ?? []) {
