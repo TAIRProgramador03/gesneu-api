@@ -267,9 +267,9 @@ const desasignarConReemplazo = async (req, res) => {
         // fecha de corte no aparece en la cola y ese cambio igual es legitimo.
         const placaOperacion =
             asignaciones[0]?.Placa ?? bajasDefinitivas[0]?.PLACA ?? null;
-        const talleresUsuario = colaS60Service.talleresDeSesion(req.session.user);
+        const usuarioCola = colaS60Service.usuarioDeSesion(req.session.user);
         const cabezaCola = placaOperacion
-            ? await colaS60Service.obtenerCabeza(talleresUsuario)
+            ? await colaS60Service.obtenerCabeza(usuarioCola)
             : null;
 
         if (cabezaCola) {

@@ -5,7 +5,7 @@ const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT';
  * Cola obligatoria de S60.
  *
  * REGLA (definida con el usuario el 21-oct-2026):
- * La linea de S60 pendiente mas antigua de los talleres a cargo del usuario
+ * La linea de S60 pendiente mas antigua de las operaciones a cargo del usuario
  * define la UNICA S60 habilitada. Mientras exista una pendiente, solo se puede
  * trabajar sobre la placa de esa S60 — inspeccionar, reubicar, desasignar y
  * asignar. Cualquier otra placa queda bloqueada. Al cerrarse, la cabeza pasa a
@@ -106,7 +106,7 @@ const SQL_COD_ENTRANTE = `TRIM(LEFT(TRIM(SINVSE.MDDRE7), LOCATE('-', TRIM(SINVSE
 const SQL_COD_SALIENTE = `TRIM(SUBSTR(TRIM(SINVSE.MDDRE7), LOCATE('-', TRIM(SINVSE.MDDRE7)) + 1))`;
 
 /**
- * Lineas de S60 todavia no regularizadas, de los talleres indicados, en el
+ * Lineas de S60 todavia no regularizadas, de las placas del usuario, en el
  * orden exacto de la cola.
  *
  * ORDEN: fecha -> hora -> correlativo.
@@ -133,13 +133,13 @@ const SQL_COD_SALIENTE = `TRIM(SUBSTR(TRIM(SINVSE.MDDRE7), LOCATE('-', TRIM(SINV
  * esa placa y la linea se cae sola de la cola, aunque por algun motivo no haya
  * quedado su fila en NEU_S60_REGULARIZADA.
  */
-async function obtenerPendientes(talleres, limite = 50) {
-  if (!Array.isArray(talleres) || talleres.length === 0) return [];
+async function obtenerPendientes(usuario, limite = 50) {
+  const codigoUsuario = String(usuario ?? '').trim();
+  if (!codigoUsuario) return [];
 
   const desde = obtenerFechaCorte();
   if (desde === null) return [];
 
-  const placeholders = talleres.map(() => '?').join(',');
   const estadosEntrante = ESTADOS_ENTRANTE_VALIDOS.join(',');
 
   const sql = `
@@ -154,6 +154,7 @@ async function obtenerPendientes(talleres, limite = 50) {
       TRIM(SINVSE.MDDRE7)  AS PAR,
       ${SQL_COD_ENTRANTE}  AS COD_ENTRANTE,
       ${SQL_COD_SALIENTE}  AS COD_SALIENTE,
+      TRIM(POPE.DESCRIPCION)  AS OPERACION,
       TRIM(PTALL.DESCRIPCION) AS TALLER
     FROM ${BD_SCHEMA}.TMOVD AS SINVSE
     INNER JOIN ${BD_SCHEMA}.TMOVH AS SINVSEH
@@ -165,17 +166,57 @@ async function obtenerPendientes(talleres, limite = 50) {
        OR TRIM(SINVSEH.MHREF6) LIKE '%SIN'
        OR TRIM(SINVSEH.MHREF6) LIKE '%COB')
        AND SINVSEH.MHALMA <> '51'
-    LEFT JOIN ${BD_SCHEMA}.PO_VEHICULO VE
+    -- La placa de la S60 tiene que existir y ser del usuario.
+    --
+    -- Se usa MAE_OPERACION_X_USUARIO, la MISMA tabla con la que
+    -- poBuscarVehiculoController decide si una unidad le pertenece. Antes se
+    -- filtraba por los talleres de la sesion (MAE_TALLER_X_USUARIO), dando el
+    -- rodeo PO_VEHICULO -> PO_OPERACIONES -> PO_TALLER, y eso estaba mal: esa
+    -- tabla delimita NEUMATICOS, no placas, y como un taller agrupa VARIAS
+    -- operaciones se colaban placas ajenas. Si una quedaba de cabeza, el
+    -- usuario no podia abrirla ("la unidad no le pertenece") ni saltar a la
+    -- siguiente: la cola se le trancaba.
+    --
+    -- INNER y no LEFT a proposito: una S60 cuya placa no resuelve dueño no debe
+    -- aparecer en la cola de nadie.
+    INNER JOIN ${BD_SCHEMA}.PO_VEHICULO VE
       ON TRIM(VE.NUMPLA) = TRIM(SINVSEH.MHREF3)
-    LEFT JOIN ${BD_SCHEMA}.PO_OPERACIONES POS
-      ON POS.ID = VE.SECOPE
+    INNER JOIN ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO USU
+      ON USU.IDOPERACION = VE.SECOPE
+     AND TRIM(USU.CH_CODI_USUARIO) = ?
+    -- Solo para mostrar los nombres. No filtran.
+    LEFT JOIN ${BD_SCHEMA}.PO_OPERACIONES POPE
+      ON POPE."ID" = VE.SECOPE
     LEFT JOIN ${BD_SCHEMA}.PO_TALLER PTALL
-      ON PTALL.ID = POS.IDTLR
+      ON PTALL."ID" = POPE.IDTLR
     WHERE SINVSE.MDCMOV = 'S'
       AND SINVSE.MDTMOV = '60'
       AND (SINVSE.MDCOAR LIKE '140%' OR SINVSE.MDCOAR LIKE '240%')
       AND SINVSE.MDFECH >= ?
-      AND TRIM(PTALL.DESCRIPCION) IN (${placeholders})
+
+      -- Y el vale tiene que haberse emitido en un taller del usuario.
+      --
+      -- Son DOS condiciones distintas y hacen falta las dos: la placa puede
+      -- haber pasado a otra operacion despues, pero la S60 se emitio en un
+      -- taller concreto y es ese taller el que debe regularizarla.
+      --
+      -- El vinculo NO es MHALMA: en todo el sistema no hay ninguna relacion
+      -- entre el almacen del movimiento y PO_TALLER. Lo que si existe —y ya
+      -- corre en produccion, en el reporte de neumaticos despachados
+      -- (poReporteController.js:711-713)— es que los primeros 4 caracteres de
+      -- MHREF6 son la serie del taller. Es el mismo campo que ya miramos arriba
+      -- por su final (NEU/SIN/COB): resulta ser SERIE + TIPO.
+      --
+      -- EXISTS y no INNER JOIN: un usuario puede tener varios talleres y un
+      -- JOIN multiplicaria la fila de S60 por cada uno que cruce.
+      AND EXISTS (
+        SELECT 1
+        FROM ${BD_SCHEMA}.MAE_TALLER_X_USUARIO MTXU
+        INNER JOIN ${BD_SCHEMA}.PO_TALLER PT
+          ON PT.ID = MTXU.ID_TALLER
+        WHERE TRIM(MTXU.CH_CODI_USUARIO) = ?
+          AND TRIM(PT.CH_SERI_TALLER) = TRIM(SUBSTR(SINVSEH.MHREF6, 1, 4))
+      )
       ${SQL_PAR_VALIDO}
       AND NOT EXISTS (
         SELECT 1
@@ -207,7 +248,10 @@ async function obtenerPendientes(talleres, limite = 50) {
     FETCH FIRST ${Number(limite)} ROWS ONLY
   `;
 
-  const filas = await db.query(sql, [desde, ...talleres]);
+  // El orden sigue la posicion en el texto: el usuario va primero en el JOIN de
+  // la operacion, despues la fecha, y el usuario otra vez en el EXISTS del
+  // taller.
+  const filas = await db.query(sql, [codigoUsuario, desde, codigoUsuario]);
 
   const pendientes = [];
   for (const fila of filas ?? []) {
@@ -223,6 +267,7 @@ async function obtenerPendientes(talleres, limite = 50) {
       fecha: Number(fila.FECHA),
       hora: Number(fila.HORA),
       placa: String(fila.PLACA ?? '').trim(),
+      operacion: String(fila.OPERACION ?? '').trim(),
       taller: String(fila.TALLER ?? '').trim(),
       par: partido.par,
       codigoEntrante: partido.entrante,
@@ -242,8 +287,8 @@ async function obtenerPendientes(talleres, limite = 50) {
  * y las lineas de un mismo documento comparten fecha y hora, las de la cabeza
  * salen siempre juntas al principio.
  */
-async function obtenerCabeza(talleres) {
-  const pendientes = await obtenerPendientes(talleres, 50);
+async function obtenerCabeza(usuario) {
+  const pendientes = await obtenerPendientes(usuario, 50);
   if (pendientes.length === 0) return null;
 
   const primera = pendientes[0];
@@ -257,6 +302,7 @@ async function obtenerCabeza(talleres) {
     fecha: primera.fecha,
     hora: primera.hora,
     placa: primera.placa,
+    operacion: primera.operacion,
     taller: primera.taller,
     lineas: lineas.map((l) => ({
       correlativo: l.correlativo,
@@ -278,8 +324,8 @@ async function obtenerCabeza(talleres) {
  * El estado seguro ante una cola vacia es DEJAR PASAR. Un error de lectura no
  * debe trancar un taller entero.
  */
-async function verificarPlacaHabilitada(talleres, placa) {
-  const cabeza = await obtenerCabeza(talleres);
+async function verificarPlacaHabilitada(usuario, placa) {
+  const cabeza = await obtenerCabeza(usuario);
   if (!cabeza) return { habilitada: true, cabeza: null };
 
   const placaPedida = String(placa ?? '').trim().toUpperCase();
@@ -430,17 +476,15 @@ async function registrarRegularizacion({
 }
 
 /**
- * Los talleres del usuario tal como quedan en la sesion web: un arreglo de
- * objetos { taller }. Un usuario sin talleres devuelve [], y con eso la cola
- * sale vacia y no se le bloquea nada — trancar a alguien por un dato de
- * configuracion que falta es peor que dejarlo pasar.
+ * El codigo del usuario de la sesion web.
+ *
+ * Es lo unico que necesita la cola: las placas salen de
+ * MAE_OPERACION_X_USUARIO cruzando por este codigo. Si viene vacio la cola sale
+ * vacia y no se bloquea nada — trancar a alguien por un dato de configuracion
+ * que falta es peor que dejarlo pasar.
  */
-function talleresDeSesion(sessionUser) {
-  const crudos = sessionUser?.talleres;
-  if (!Array.isArray(crudos)) return [];
-  return crudos
-    .map((item) => String(item?.taller ?? item ?? '').trim())
-    .filter((nombre) => nombre !== '');
+function usuarioDeSesion(sessionUser) {
+  return String(sessionUser?.usuario ?? '').trim();
 }
 
 /** `20261021` -> `21/10/2026`, para los mensajes que ve el tecnico. */
@@ -488,8 +532,8 @@ function mensajeBloqueo(cabeza) {
  * responder cuando no.
  */
 async function bloquearSiPlacaNoHabilitada(sessionUser, placa) {
-  const talleres = talleresDeSesion(sessionUser);
-  const { habilitada, cabeza } = await verificarPlacaHabilitada(talleres, placa);
+  const usuario = usuarioDeSesion(sessionUser);
+  const { habilitada, cabeza } = await verificarPlacaHabilitada(usuario, placa);
   if (habilitada) return null;
 
   return {
@@ -515,7 +559,7 @@ module.exports = {
   buscarIdUltimoMovimiento,
   registrarRegularizacion,
   bloquearSiPlacaNoHabilitada,
-  talleresDeSesion,
+  usuarioDeSesion,
   mensajeBloqueo,
   partirPar,
   obtenerFechaCorte,
