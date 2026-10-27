@@ -499,7 +499,14 @@ const TIPOS_MOVIMIENTO_SALIENTE = ['RECUPERADO', 'BAJA DEFINITIVA'];
  * Tampoco se toca NEU_VKILOMETRAJE, igual que la web: `desasignarConReemplazo`
  * no inserta ninguna fila ahi (a diferencia de INSPECCION/ASIGNACION, que si).
  */
-async function aplicarReemplazo(op, usuarioId) {
+/**
+ * SOLO LECTURA Y VALIDACIÓN — los 4 chequeos de REEMPLAZO, extraídos de
+ * `aplicarReemplazo` para que el batch móvil pueda validar un grupo entero
+ * (varias posiciones reemplazadas en una sola acción del técnico) antes de
+ * aplicar ninguna. No escribe nada. Devuelve los campos ya parseados
+ * (trim/mayúsculas) para que `aplicarReemplazo` no tenga que recalcularlos.
+ */
+async function validarReemplazo(op) {
   const payload = op.payload ?? {};
   const codigoSaliente = String(payload.codigoSaliente ?? '').trim();
   const codigoEntrante = String(payload.codigoEntrante ?? '').trim();
@@ -554,6 +561,12 @@ async function aplicarReemplazo(op, usuarioId) {
       entrante.PLACA_ACTUAL ? ` (esta montado en ${entrante.PLACA_ACTUAL})` : ''
     } - probablemente otro tecnico ya lo asigno.`
   );
+
+  return { codigoSaliente, codigoEntrante, posicion, tipoMovimiento, placa, payload };
+}
+
+async function aplicarReemplazo(op, usuarioId) {
+  const { codigoSaliente, codigoEntrante, posicion, tipoMovimiento, placa, payload } = await validarReemplazo(op);
 
   // 4. Mismo orden que desasignarConReemplazo: sale primero, entra despues.
   // Entre las dos llamadas la posicion queda vacia por un instante — sin
@@ -624,6 +637,117 @@ async function aplicarOperacion(op, usuarioId) {
 }
 
 /**
+ * SOLO LECTURA Y VALIDACIÓN — equivalente de `aplicarOperacion` pero sin
+ * escribir nada, para que `aplicarBatch` pueda comprobar TODO un grupo
+ * (id_grupo) antes de aplicar ninguna de sus operaciones. Ver "PENDIENTE
+ * CRÍTICO" en el repo móvil: la regla acordada es "si una falla, no se
+ * aplica ninguna", porque hoy una inspección/asignación/reubicación/
+ * reemplazo de varias posiciones son N filas independientes que se
+ * aceptaban/rechazaban cada una por su cuenta — un caso real (CDA-742) dejó
+ * una inspección a medias: 4 posiciones rechazadas, 1 aplicada.
+ *
+ * Reusa exactamente los mismos chequeos que ya corren antes de escribir en
+ * cada `aplicarX` (posicionYaOcupada, posicionCoincideConEsperado, los 4 de
+ * REEMPLAZO) más las validaciones que antes vivían SOLO dentro de
+ * `neumaticoService` mezcladas con la escritura (remanente de inspección,
+ * estado del neumático en asignación, la regla de los 4 días de
+ * reubicación) — esas tres se extrajeron a `neumaticoService.validarX` para
+ * no duplicar la regla más importante del proyecto en dos lados.
+ *
+ * `contexto` trae `eventosVkilometraje`/`duplicadoInspeccionCache`, el mismo
+ * estado que ya mantenía `aplicarBatch` — se pasa por referencia porque la
+ * validación de INSPECCION necesita ver duplicados de placa+fecha dentro del
+ * propio batch, y la de REUBICAR necesita los eventos de NEU_VKILOMETRAJE
+ * de grupos anteriores ya aplicados (ver el flush de abajo).
+ */
+async function validarOperacion(op, contexto) {
+  switch (op.tipoOperacion) {
+    case 'INSPECCION': {
+      if (op.placa) {
+        const claveInspeccion = `${op.placa}|${op.payload.fechaInspeccion}`;
+        if (!contexto.duplicadoInspeccionCache.has(claveInspeccion)) {
+          const yaExiste =
+            contexto.eventosVkilometraje.has(claveInspeccion) ||
+            (await existeInspeccionParaFecha(op.placa, op.payload.fechaInspeccion));
+          contexto.duplicadoInspeccionCache.set(claveInspeccion, yaExiste);
+        }
+        if (contexto.duplicadoInspeccionCache.get(claveInspeccion)) {
+          throw new Error(
+            `Ya existe una inspeccion registrada para la placa ${op.placa} en la fecha ${op.payload.fechaInspeccion} (posiblemente de otro tecnico) - se descarta esta.`
+          );
+        }
+      }
+      await validarLimitesInspeccion(op);
+      await neumaticoService.validarInspeccion({
+        CODIGO: op.payload.codigo,
+        REMANENTE: op.payload.remanente,
+        KILOMETRO: op.payload.kilometro,
+        PLACA: op.placa,
+      });
+      return;
+    }
+    case 'ASIGNACION': {
+      await validarLimitesAsignacion(op);
+      if (op.placa && op.payload.posicion) {
+        const ocupada = await posicionYaOcupada(op.placa, op.payload.posicion);
+        if (ocupada) {
+          throw new Error(
+            `La posicion ${op.payload.posicion} de la placa ${op.placa} ya tiene un neumatico asignado - probablemente otro tecnico ya la ocupo.`
+          );
+        }
+      }
+      await neumaticoService.validarAsignacion({
+        CodigoNeumatico: op.payload.codigo,
+        PresionAire: op.payload.presion,
+      });
+      return;
+    }
+    case 'REUBICAR': {
+      // Mismo fix que BTS-806: si un grupo anterior de este mismo batch (una
+      // INSPECCION ya aplicada) dejó un evento pendiente de volcar a
+      // NEU_VKILOMETRAJE para esta placa, hay que volcarlo ANTES de
+      // preguntar por la regla de los 4 dias — si no, esta validacion vería
+      // datos viejos y podría rechazar una reubicación que el propio batch
+      // acaba de habilitar. Es la misma llamada que ya hacía el apply, acá
+      // además corre en la fase de validación (idempotente: si ya no queda
+      // nada pendiente para esta placa, no hace nada).
+      if (op.placa) {
+        await volcarEventosVkilometraje(contexto.eventosVkilometraje, op.placa);
+      }
+      const traeExpectativaDeDestino = Object.prototype.hasOwnProperty.call(op.payload, 'codigoEnDestino');
+      if (op.placa && op.payload.posicionFin && traeExpectativaDeDestino) {
+        const ok = await posicionCoincideConEsperado(
+          op.placa,
+          op.payload.posicionFin,
+          op.payload.codigoEnDestino ?? null
+        );
+        if (!ok) {
+          throw new Error(
+            `La posicion ${op.payload.posicionFin} de la placa ${op.placa} ya no tiene el neumatico esperado - probablemente otro tecnico ya la modifico.`
+          );
+        }
+      }
+      await neumaticoService.validarReubicacion({
+        CODIGO: op.payload.codigo,
+        PLACA: op.placa,
+        KILOMETRO: op.payload.kilometro,
+      });
+      return;
+    }
+    case 'REEMPLAZO':
+      await validarReemplazo(op);
+      return;
+    case 'DESASIGNAR_RECUPERADO':
+    case 'DESASIGNAR_BAJA':
+      // Sin chequeo propio — ver el comentario de aplicarDesasignacion (tipos
+      // legacy, ninguna pantalla móvil los produce hoy).
+      return;
+    default:
+      throw new Error(`Tipo de operación no soportado: ${op.tipoOperacion}`);
+  }
+}
+
+/**
  * Réplica del INSERT final de poInspeccionController.crearInspeccion: una
  * sola fila en NEU_VKILOMETRAJE por placa (no por neumático), con el
  * kilometraje/fecha/tipo de terreno/retén de esa inspección — es lo que la
@@ -685,6 +809,23 @@ async function existeInspeccionParaFecha(placa, fechaInspeccion) {
  * arriba como para que, si el técnico desasignó un neumático y asignó otro
  * a la misma posición en el mismo batch, se apliquen en el orden en que
  * ocurrieron de verdad (la cola local ya viene ordenada por creado_en).
+ *
+ * Agrupa por `idGrupo` (las 5 filas de una inspección, o las N de una
+ * asignación/reubicación/reemplazo, comparten el mismo valor — generado en
+ * el móvil al guardar) y valida CADA grupo entero antes de escribir ninguna
+ * de sus operaciones — regla acordada: "si una falla, no se procesa ese
+ * movimiento, porque puede mover muchas cosas". Antes de esto, una
+ * inspección de 5 posiciones podía quedar a medias si el servidor rechazaba
+ * solo alguna (caso real: CDA-742, 4 rechazadas + 1 aplicada).
+ *
+ * Filas SIN `idGrupo` (apps móviles viejas que no mandan el campo) se tratan
+ * como un grupo de uno — exactamente el comportamiento de antes, sin migrar
+ * nada.
+ *
+ * Esto NO es una transacción: sigue sin haber rollback real si el fallo
+ * aparece a mitad de la escritura de un grupo ya validado (ver el límite
+ * documentado en el repo móvil). Lo que elimina son los fallos
+ * PREDECIBLES — los que ya se sabían antes de escribir nada.
  */
 async function aplicarBatch(operaciones, usuarioId) {
   const resultados = [];
@@ -708,7 +849,12 @@ async function aplicarBatch(operaciones, usuarioId) {
   // esa combinación (true/false) — evita repetir la consulta a
   // NEU_VKILOMETRAJE 5 veces (una por posición) para la misma inspección.
   const duplicadoInspeccionCache = new Map();
+  const contexto = { eventosVkilometraje, duplicadoInspeccionCache };
 
+  // Paso 1: dedup de siempre, SIN agrupar todavía — una operación ya resuelta
+  // en una corrida anterior (reintento de la misma request) devuelve el
+  // mismo resultado cacheado, igual que antes.
+  const pendientes = [];
   for (const op of operaciones) {
     const previa = await buscarSincronizacionPrevia(op.idLocal);
     if (previa) {
@@ -720,29 +866,50 @@ async function aplicarBatch(operaciones, usuarioId) {
       });
       continue;
     }
+    pendientes.push(op);
+  }
 
-    // Regla acordada con el usuario: "el que sincroniza primero, gana". Si
-    // ya existe una inspección de esta placa+fecha — sea porque otro técnico
-    // ya la sincronizó antes (NEU_VKILOMETRAJE real) o porque otra inspección
-    // de este mismo batch ya la reclamó (inspeccionesNuevas) — se rechaza la
-    // operación ENTERA, no solo el kilometraje: o entra completa, o no entra
-    // nada, para no dejar 4 posiciones aplicadas y 1 rara. El motivo queda
-    // registrado en NEU_MOVIL_SYNC (no en las tablas reales de neumáticos),
-    // consultable para revisar el caso — no debería pasar seguido, ya que el
-    // propio móvil bloquea repetir fecha con el mismo técnico/dispositivo;
-    // esto cubre el caso de DOS técnicos distintos inspeccionando la misma
-    // placa el mismo día sin saber uno del otro.
-    if (op.tipoOperacion === 'INSPECCION' && op.placa) {
-      const claveInspeccion = `${op.placa}|${op.payload.fechaInspeccion}`;
-      if (!duplicadoInspeccionCache.has(claveInspeccion)) {
-        const yaExiste =
-          eventosVkilometraje.has(claveInspeccion) ||
-          (await existeInspeccionParaFecha(op.placa, op.payload.fechaInspeccion));
-        duplicadoInspeccionCache.set(claveInspeccion, yaExiste);
+  // Paso 2: agrupar lo que falta procesar. Un Map conserva el orden de
+  // inserción, así que los grupos se procesan en el mismo orden en que
+  // aparecieron sus primeras filas — y las operaciones DENTRO de cada grupo
+  // mantienen su orden original también.
+  const grupos = new Map();
+  for (const op of pendientes) {
+    const clave = op.idGrupo || `__solo__${op.idLocal}`;
+    if (!grupos.has(clave)) grupos.set(clave, []);
+    grupos.get(clave).push(op);
+  }
+
+  for (const grupoOps of grupos.values()) {
+    let fallo = null;
+    for (const op of grupoOps) {
+      try {
+        await validarOperacion(op, contexto);
+      } catch (err) {
+        fallo = { op, err };
+        break; // con el primer fallo alcanza para rechazar el grupo entero
       }
-      if (duplicadoInspeccionCache.get(claveInspeccion)) {
-        const mensaje = `Ya existe una inspeccion registrada para la placa ${op.placa} en la fecha ${op.payload.fechaInspeccion} (posiblemente de otro tecnico) - se descarta esta.`;
-        console.error(`[mobileSyncBatchService] Operación ${op.idLocal} (INSPECCION) rechazada por duplicado:`, mensaje);
+    }
+
+    if (fallo) {
+      const detalleOdbc = fallo.err?.odbcErrors ? ` | odbcErrors: ${JSON.stringify(fallo.err.odbcErrors)}` : '';
+      const motivo = String(fallo.err?.message ?? fallo.err);
+      const esGrupoReal = grupoOps.length > 1;
+      console.error(
+        `[mobileSyncBatchService] Grupo rechazado (${grupoOps.length} operación(es), falló ${fallo.op.idLocal}):`,
+        motivo
+      );
+      for (const op of grupoOps) {
+        // La operación que de verdad falló conserva su mensaje tal cual
+        // (mismo texto que vería hoy sola, sin grupo) — sus "hermanas" se
+        // rechazan igual pero con el motivo ajeno explícito, para que el
+        // técnico entienda por qué una posición que en sí estaba bien
+        // también quedó afuera.
+        const mensaje = (
+          (op === fallo.op || !esGrupoReal
+            ? motivo
+            : `Rechazado junto con otra posición del mismo registro (${fallo.op.payload?.posicion ?? fallo.op.placa ?? 'otra'}): ${motivo}`) + detalleOdbc
+        ).slice(0, 500);
         await registrarResultadoSync({
           idLocal: op.idLocal,
           tipoOperacion: op.tipoOperacion,
@@ -754,91 +921,87 @@ async function aplicarBatch(operaciones, usuarioId) {
           usuarioMovil: usuarioId,
         });
         resultados.push({ idLocal: op.idLocal, estado: 'RECHAZADO', mensajeError: mensaje });
-        continue;
       }
+      continue; // siguiente grupo — ninguna de estas se escribió
     }
 
-    try {
-      // BUG REAL (BTS-806, 12-oct-2026): la fila de NEU_VKILOMETRAJE de una
-      // inspeccion se insertaba recien al TERMINAR el lote, pero
-      // reubicarNeumatico lee justamente esa tabla para su regla de "maximo 4
-      // dias desde la ultima inspeccion". Un tecnico que offline inspecciono y
-      // despues reubico la misma placa veia su reubicacion RECHAZADA al
-      // sincronizar, porque el servidor todavia no tenia registrada la
-      // inspeccion que acababa de aplicar milisegundos antes. Se vuelcan las
-      // filas de esta placa antes de reubicar, asi el chequeo ve el estado
-      // real.
-      if (op.tipoOperacion === 'REUBICAR' && op.placa) {
-        await volcarEventosVkilometraje(eventosVkilometraje, op.placa);
-      }
+    // Todo el grupo validó bien — se aplica cada operación, mismo camino de
+    // siempre (el flush de REUBICAR ya corrió una vez en validarOperacion;
+    // acá es un no-op si no quedó nada pendiente para esa placa).
+    for (const op of grupoOps) {
+      try {
+        if (op.tipoOperacion === 'REUBICAR' && op.placa) {
+          await volcarEventosVkilometraje(eventosVkilometraje, op.placa);
+        }
 
-      const idMovimiento = await aplicarOperacion(op, usuarioId);
-      await registrarResultadoSync({
-        idLocal: op.idLocal,
-        tipoOperacion: op.tipoOperacion,
-        idNeumatico: op.idNeumatico,
-        placa: op.placa,
-        idMovimientoAplicado: idMovimiento,
-        estado: 'APLICADO',
-        usuarioMovil: usuarioId,
-      });
-      resultados.push({ idLocal: op.idLocal, estado: 'APLICADO', idMovimientoAplicado: idMovimiento });
+        const idMovimiento = await aplicarOperacion(op, usuarioId);
+        await registrarResultadoSync({
+          idLocal: op.idLocal,
+          tipoOperacion: op.tipoOperacion,
+          idNeumatico: op.idNeumatico,
+          placa: op.placa,
+          idMovimientoAplicado: idMovimiento,
+          estado: 'APLICADO',
+          usuarioMovil: usuarioId,
+        });
+        resultados.push({ idLocal: op.idLocal, estado: 'APLICADO', idMovimientoAplicado: idMovimiento });
 
-      if (op.tipoOperacion === 'INSPECCION' && op.placa) {
-        eventosVkilometraje.set(`${op.placa}|${op.payload.fechaInspeccion}`, {
-          tipo: 'INSPECCION',
+        if (op.tipoOperacion === 'INSPECCION' && op.placa) {
+          eventosVkilometraje.set(`${op.placa}|${op.payload.fechaInspeccion}`, {
+            tipo: 'INSPECCION',
+            placa: op.placa,
+            kilometro: op.payload.kilometro,
+            fecha: op.payload.fechaInspeccion,
+            tipoTerreno: op.payload.tipoTerreno,
+            reten: op.payload.reten,
+          });
+        } else if (op.tipoOperacion === 'ASIGNACION' && op.placa) {
+          // Clave por placa+fecha igual que inspección — las 5 posiciones de
+          // una misma asignación comparten la misma fecha (el wizard móvil
+          // solo permite una fecha compartida para las 5, igual que exige la
+          // web con su validación "todasIguales"), así que las 5 colapsan en
+          // esta única entrada del Map sin problema — se quiere UNA fila en
+          // NEU_VKILOMETRAJE por asignación, no una por neumático.
+          eventosVkilometraje.set(`${op.placa}|${op.payload.fechaAsignacion}`, {
+            tipo: 'ASIGNACION',
+            placa: op.placa,
+            // OJO: el payload de ASIGNACION usa `odometro`, no `kilometro`
+            // (mismo campo que lee aplicarAsignacion como Odometro) — bug real
+            // encontrado en la primera prueba en vivo (CFG-933, 2026-09-14):
+            // leer `op.payload.kilometro` acá (copiado sin ajustar del bloque
+            // de INSPECCION, que sí se llama así) mandaba `undefined` al
+            // INSERT, que fallaba silencioso — las 5 posiciones quedaban
+            // APLICADO igual (no dependen de este campo) pero la fila de
+            // NEU_VKILOMETRAJE nunca se creaba, sin ningún rastro visible para
+            // el técnico ni en NEU_MOVIL_SYNC.
+            kilometro: op.payload.odometro,
+            fecha: op.payload.fechaAsignacion,
+          });
+        }
+      } catch (err) {
+        // Esto solo debería pasar si algo cambió en la ventana (muy chica)
+        // entre validar el grupo y aplicarlo — sin transacciones no se puede
+        // cerrar del todo, es el límite ya documentado. Lo que ya se aplicó
+        // de este grupo queda aplicado; esta operación puntual se rechaza
+        // sola, igual que antes de este cambio.
+        const detalleOdbc = err?.odbcErrors ? ` | odbcErrors: ${JSON.stringify(err.odbcErrors)}` : '';
+        const mensaje = (String(err?.message ?? err) + detalleOdbc).slice(0, 500);
+        console.error(
+          `[mobileSyncBatchService] Operación ${op.idLocal} (${op.tipoOperacion}) rechazada al aplicar (pasó la validación de grupo):`,
+          mensaje
+        );
+        await registrarResultadoSync({
+          idLocal: op.idLocal,
+          tipoOperacion: op.tipoOperacion,
+          idNeumatico: op.idNeumatico,
           placa: op.placa,
-          kilometro: op.payload.kilometro,
-          fecha: op.payload.fechaInspeccion,
-          tipoTerreno: op.payload.tipoTerreno,
-          reten: op.payload.reten,
+          idMovimientoAplicado: 0,
+          estado: 'RECHAZADO',
+          mensajeError: mensaje,
+          usuarioMovil: usuarioId,
         });
-      } else if (op.tipoOperacion === 'ASIGNACION' && op.placa) {
-        // Clave por placa+fecha igual que inspección — las 5 posiciones de
-        // una misma asignación comparten la misma fecha (el wizard móvil
-        // solo permite una fecha compartida para las 5, igual que exige la
-        // web con su validación "todasIguales"), así que las 5 colapsan en
-        // esta única entrada del Map sin problema — se quiere UNA fila en
-        // NEU_VKILOMETRAJE por asignación, no una por neumático.
-        eventosVkilometraje.set(`${op.placa}|${op.payload.fechaAsignacion}`, {
-          tipo: 'ASIGNACION',
-          placa: op.placa,
-          // OJO: el payload de ASIGNACION usa `odometro`, no `kilometro`
-          // (mismo campo que lee aplicarAsignacion como Odometro) — bug real
-          // encontrado en la primera prueba en vivo (CFG-933, 2026-09-14):
-          // leer `op.payload.kilometro` acá (copiado sin ajustar del bloque
-          // de INSPECCION, que sí se llama así) mandaba `undefined` al
-          // INSERT, que fallaba silencioso — las 5 posiciones quedaban
-          // APLICADO igual (no dependen de este campo) pero la fila de
-          // NEU_VKILOMETRAJE nunca se creaba, sin ningún rastro visible para
-          // el técnico ni en NEU_MOVIL_SYNC.
-          kilometro: op.payload.odometro,
-          fecha: op.payload.fechaAsignacion,
-        });
+        resultados.push({ idLocal: op.idLocal, estado: 'RECHAZADO', mensajeError: mensaje });
       }
-    } catch (err) {
-      // err.message de un error ODBC es inútil ("[odbc] Error executing the
-      // sql statement") — el detalle real (SQLSTATE, columna, motivo) viene
-      // en err.odbcErrors (mismo campo que ya usa config/db.js para
-      // loguear reconexiones). Lo incluimos para poder diagnosticar sin
-      // tener que reproducir el bug a mano.
-      const detalleOdbc = err?.odbcErrors ? ` | odbcErrors: ${JSON.stringify(err.odbcErrors)}` : '';
-      const mensaje = (String(err?.message ?? err) + detalleOdbc).slice(0, 500);
-      console.error(`[mobileSyncBatchService] Operación ${op.idLocal} (${op.tipoOperacion}) rechazada:`, mensaje);
-      // ID_MOVIMIENTO_APLICADO es NOT NULL en NEU_MOVIL_SYNC — 0 es el
-      // sentinel acordado para "no hay movimiento real que referenciar"
-      // (los IDs reales de NEU_MOVIMIENTOS arrancan en 1).
-      await registrarResultadoSync({
-        idLocal: op.idLocal,
-        tipoOperacion: op.tipoOperacion,
-        idNeumatico: op.idNeumatico,
-        placa: op.placa,
-        idMovimientoAplicado: 0,
-        estado: 'RECHAZADO',
-        mensajeError: mensaje,
-        usuarioMovil: usuarioId,
-      });
-      resultados.push({ idLocal: op.idLocal, estado: 'RECHAZADO', mensajeError: mensaje });
     }
   }
 

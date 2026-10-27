@@ -2,13 +2,15 @@ const mobileVehiculosService = require('../services/mobileVehiculosService');
 
 async function snapshotVehiculosController(req, res) {
   try {
-    const talleres = req.usuarioMobile?.talleres;
+    // Una placa pertenece a una OPERACIÓN, no a un taller — ver el
+    // comentario en mobileVehiculosService.obtenerSnapshotVehiculos.
+    const usuario = req.usuarioMobile?.id;
 
-    if (!Array.isArray(talleres) || talleres.length === 0) {
+    if (!usuario) {
       return res.status(200).json({ vehiculos: [], generado_en: new Date().toISOString() });
     }
 
-    const vehiculos = await mobileVehiculosService.obtenerSnapshotVehiculos(talleres);
+    const vehiculos = await mobileVehiculosService.obtenerSnapshotVehiculos(usuario);
     return res.status(200).json({ vehiculos, generado_en: new Date().toISOString() });
   } catch (err) {
     console.error('[mobileVehiculosController.snapshotVehiculosController]', err);

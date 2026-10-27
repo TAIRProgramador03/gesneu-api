@@ -51,9 +51,7 @@ const listarPendientes = async (req, res) => {
 
   try {
     const limiteBruto = Number(req.query.limite);
-    const limite = Number.isInteger(limiteBruto) && limiteBruto > 0 && limiteBruto <= 500
-      ? limiteBruto
-      : 50;
+    const limite = 700;
 
     const usuario = colaS60Service.usuarioDeSesion(req.session.user);
     const pendientes = await colaS60Service.obtenerPendientes(usuario, limite);

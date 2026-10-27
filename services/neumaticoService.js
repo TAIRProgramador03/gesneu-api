@@ -214,12 +214,14 @@ const neumaticoService = {
     /**
      * Asignar un neumático a un vehículo (Montaje)
      */
-    asignarNeumatico: async (data, usuario) => {
-        const {
-            CodigoNeumatico, Remanente, PresionAire, TorqueAplicado,
-            Placa, Posicion, Odometro, ID_OPERACION, COD_SUPERVISOR, FechaAsignacion,
-            EnTransito, Taller
-        } = data;
+    /**
+     * SOLO LECTURA Y VALIDACIÓN — mismo motivo que `validarInspeccion`: el
+     * batch móvil necesita saber si una ASIGNACION va a fallar (PresionAire
+     * faltante, o el neumático ya asignado por otra operación/técnico) ANTES
+     * de escribir ninguna del grupo. No hace ningún UPDATE/INSERT.
+     */
+    validarAsignacion: async (data) => {
+        const { CodigoNeumatico, PresionAire } = data;
 
         // Validar que PresionAire sea obligatorio
         if (!PresionAire) throw new Error('La presión de aire es obligatoria para asignar un neumático');
@@ -250,6 +252,23 @@ const neumaticoService = {
             throw new Error(`Neumático ${CodigoNeumatico} no encontrado en NEU_CABECERA`);
         }
         const neumatico = resultId[0];
+
+        // VALIDACIÓN: Si el estado es ASIGNADO no permitir asignar
+        if (neumatico.ESTADO_CODIGO === 'ASIGNADO') {
+            throw new Error(`El neumático ${CodigoNeumatico} ya se encuentra asignado (Estado: ${neumatico.ESTADO_CODIGO}).Por favor, realice una inspección o desasignación primero.`);
+        }
+
+        return neumatico;
+    },
+
+    asignarNeumatico: async (data, usuario) => {
+        const {
+            CodigoNeumatico, Remanente, PresionAire, TorqueAplicado,
+            Placa, Posicion, Odometro, ID_OPERACION, COD_SUPERVISOR, FechaAsignacion,
+            EnTransito, Taller
+        } = data;
+
+        const neumatico = await neumaticoService.validarAsignacion(data);
         const idNeumatico = neumatico.ID_NEUMATICO;
         const proyectoActual = neumatico.PROYECTO_ACTUAL
         const remanenteInicial = neumatico.REMANENTE_INICIAL
@@ -262,11 +281,6 @@ const neumaticoService = {
         // * si no tiene movimientos, usar el remanente de base (se intuye que es nueva asignación)
 
         const porcentajeRemantene = Math.round(((Remanente * 100) / (!remanenteInicial ? Remanente : remanenteInicial)))
-
-        // VALIDACIÓN: Si el estado es ASIGNADO no permitir asignar
-        if (neumatico.ESTADO_CODIGO === 'ASIGNADO') {
-            throw new Error(`El neumático ${CodigoNeumatico} ya se encuentra asignado (Estado: ${neumatico.ESTADO_CODIGO}).Por favor, realice una inspección o desasignación primero.`);
-        }
 
         // 2. Actualizar Cabecera (Estado y Ubicacion)
         const sqlUpdate = `
@@ -316,11 +330,15 @@ const neumaticoService = {
     /**
      * Reubicar un neumático (Rotación o Movimiento)
      */
-    reubicarNeumatico: async (data, usuario) => {
-        const {
-            CODIGO, PLACA, POSICION_FIN, POSICION_INICIAL,
-            REMANENTE, PRESION_AIRE, KILOMETRO, OBSERVACION, ID_OPERACION, COD_SUPERVISOR, EnTransito, TallerEnTransito
-        } = data;
+    /**
+     * SOLO LECTURA Y VALIDACIÓN — mismo motivo que `validarInspeccion`: la
+     * regla de los 4 días es real y puede fallar por una condición de carrera
+     * (tiempo offline, otro técnico), así que el batch móvil necesita poder
+     * comprobarla para TODO un grupo antes de escribir ninguna. No hace
+     * ningún UPDATE/INSERT.
+     */
+    validarReubicacion: async (data) => {
+        const { CODIGO, PLACA, KILOMETRO } = data;
 
         const sqlInsp = `
             SELECT
@@ -373,12 +391,25 @@ const neumaticoService = {
                 AND NI.PLACA_ACTUAL = ?
             WHERE NP.CODIGO = ?`;
 
-        // FALTA, ODOMETRO, 
+        // FALTA, ODOMETRO,
 
         const resultId = await db.query(sqlGetId, [PLACA, PLACA, CODIGO]);
         if (!resultId || resultId.length === 0) throw new Error(`Neumático ${CODIGO} no encontrado`);
         const ultimoRegistro = resultId[0];
 
+        // `fechaSuceso` viaja en el objeto devuelto porque `reubicarNeumatico`
+        // la necesita para `registrarMovimiento` (fecha_mantenimiento) y
+        // recalcularla ahí implicaría repetir la consulta sqlInsp.
+        return { ...ultimoRegistro, fechaSuceso: resInsp[0].FECHA_SUCESO };
+    },
+
+    reubicarNeumatico: async (data, usuario) => {
+        const {
+            CODIGO, PLACA, POSICION_FIN, POSICION_INICIAL,
+            REMANENTE, PRESION_AIRE, KILOMETRO, OBSERVACION, ID_OPERACION, COD_SUPERVISOR, EnTransito, TallerEnTransito
+        } = data;
+
+        const ultimoRegistro = await neumaticoService.validarReubicacion(data);
         const idNeumatico = ultimoRegistro.ID_NEUMATICO;
 
         // Heredar valores si no se proporcionan nuevos
@@ -421,7 +452,7 @@ const neumaticoService = {
             COD_SUPERVISOR,
             nuevoPorcentaje: porcentajeVidaFinal,
             torque: torqueFinal,
-            fecha_mantenimiento: resInsp[0].FECHA_SUCESO,
+            fecha_mantenimiento: ultimoRegistro.fechaSuceso,
             EnTransito,
             TallerEnTransito
         });
@@ -551,10 +582,20 @@ const neumaticoService = {
     /**
      * Registrar Inspección (Medición de Presión, Remanente, Kilometraje)
      */
-    registrarInspeccion: async (data, usuario) => {
-        const {
-            CODIGO, REMANENTE, PRESION, KILOMETRO, OBSERVACION, PLACA, TORQUE, cod_supervisor, id_operacion, fecha_inspeccion, EnTransito, TallerEnTransito
-        } = data;
+    /**
+     * SOLO LECTURA Y VALIDACIÓN — extraído de `registrarInspeccion` para que
+     * el batch móvil (mobileSyncBatchService.aplicarBatch) pueda validar las
+     * 5 posiciones de una inspección ANTES de escribir ninguna (la regla de
+     * "si una falla, no se aplica ninguna" — ver PENDIENTE CRÍTICO en el
+     * repo móvil). No hace ningún UPDATE/INSERT; `registrarInspeccion` sigue
+     * siendo el único que escribe, reusando este método para no duplicar la
+     * regla de remanente en dos lados (es la más importante del proyecto).
+     *
+     * Devuelve la fila `neumatico` (mismo shape que antes se leía inline)
+     * para que `registrarInspeccion` no tenga que repetir el SELECT.
+     */
+    validarInspeccion: async (data) => {
+        const { CODIGO, REMANENTE, KILOMETRO, PLACA } = data;
 
         // TODO:
         // * Traer el primer remanente de los neu_movimientos -> no importa si son de la misma placa, solo que sea de la misma
@@ -645,6 +686,19 @@ const neumaticoService = {
         // Pero validamos que no metan basura si no es lógico
         // }
 
+        // `kmRecorrido` viaja en el objeto devuelto (no solo los campos crudos
+        // de la fila) porque `registrarInspeccion` lo necesita para el UPDATE
+        // y recalcularlo ahí duplicaría la misma cuenta.
+        return { ...neumatico, posicionActual, kmRecorrido };
+    },
+
+    registrarInspeccion: async (data, usuario) => {
+        const {
+            CODIGO, REMANENTE, PRESION, KILOMETRO, OBSERVACION, PLACA, TORQUE, cod_supervisor, id_operacion, fecha_inspeccion, EnTransito, TallerEnTransito
+        } = data;
+
+        const neumatico = await neumaticoService.validarInspeccion(data);
+        const { kmRecorrido } = neumatico;
 
         // 2. Actualizar Cabecera (Mediciones Actuales + Acumular Vida + Porcentaje)
         // KM_TOTAL_VIDA se incrementa con el recorrido

@@ -39,18 +39,26 @@ function fechaNumericaHaceDias(dias) {
   return Number(`${d.getFullYear()}${mes}${dia}`);
 }
 
-async function obtenerSnapshotSalidas(talleres) {
-  if (!Array.isArray(talleres) || talleres.length === 0) return [];
+/**
+ * Alcance CORREGIDO (13-oct-2026): mismo motivo que
+ * mobileVehiculosService.obtenerSnapshotVehiculos — una placa pertenece a una
+ * OPERACIÓN, no a un taller. `usuario` = `req.usuarioMobile.id`
+ * (`CH_CODI_USUARIO`), no `.talleres`. El join a PO_VEHICULO pasó de LEFT a
+ * INNER a propósito: una salida cuya placa no resuelve dueño no debe
+ * aparecer en el snapshot de nadie.
+ */
+async function obtenerSnapshotSalidas(usuario) {
+  if (!usuario) return [];
 
-  const placeholders = talleres.map(() => '?').join(',');
   const desde = fechaNumericaHaceDias(DIAS_VENTANA);
 
   // Mismo criterio exacto que la validacion de desasignarConReemplazo: si acá
   // se filtrara distinto, el movil permitiria algo que el servidor rechaza (o
   // al reves). Cualquier cambio alla tiene que replicarse aca.
   //
-  // El join a PO_VEHICULO/PO_OPERACIONES/PO_TALLER es el mismo que ya usa
-  // mobileVehiculosService para resolver el taller de una placa.
+  // El join a MAE_OPERACION_X_USUARIO es el mismo que usa
+  // poBuscarVehiculoController (y colaS60Service.obtenerPendientes) para
+  // decidir si una placa le pertenece a un usuario.
   const sql = `
     SELECT
       TRIM(SINVSEH.MHREF3) AS PLACA,
@@ -65,22 +73,22 @@ async function obtenerSnapshotSalidas(talleres) {
      AND (TRIM(SINVSEH.MHREF6) LIKE '%NEU'
        OR TRIM(SINVSEH.MHREF6) LIKE '%SIN'
        OR TRIM(SINVSEH.MHREF6) LIKE '%COB')
-    LEFT JOIN ${BD_SCHEMA}.PO_VEHICULO VE
+    INNER JOIN ${BD_SCHEMA}.PO_VEHICULO VE
       ON TRIM(VE.NUMPLA) = TRIM(SINVSEH.MHREF3)
-    LEFT JOIN ${BD_SCHEMA}.PO_OPERACIONES POS
-      ON POS.ID = VE.SECOPE
-    LEFT JOIN ${BD_SCHEMA}.PO_TALLER PTALL
-      ON PTALL.ID = POS.IDTLR
+    INNER JOIN ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO USU
+      ON USU.IDOPERACION = VE.SECOPE
+     AND TRIM(USU.CH_CODI_USUARIO) = ?
     WHERE SINVSE.MDCMOV = 'S'
       AND SINVSE.MDTMOV = '60'
       AND (SINVSE.MDCOAR LIKE '140%' OR SINVSE.MDCOAR LIKE '240%')
       AND SINVSE.MDFECH >= ?
       AND TRIM(SINVSE.MDDRE7) <> ''
-      AND TRIM(PTALL.DESCRIPCION) IN (${placeholders})
     ORDER BY SINVSE.MDFECH DESC
   `;
 
-  const filas = await db.query(sql, [desde, ...talleres]);
+  // Orden textual de los `?`: primero el del JOIN (usuario), despues el del
+  // WHERE (desde) — el binding sigue el orden en que aparecen en el texto.
+  const filas = await db.query(sql, [usuario, desde]);
 
   // El par llega como texto libre del ERP y hay basura cargada a mano ("SC",
   // "nuevo", "S/N-S/N"): se descarta lo que no parta en exactamente dos

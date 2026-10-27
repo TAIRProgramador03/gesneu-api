@@ -3,10 +3,26 @@ const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT';
 
 const PORCENTAJE_ALERTA = 39;
 
-async function obtenerSnapshotVehiculos(talleres) {
-  if (!Array.isArray(talleres) || talleres.length === 0) return [];
-
-  const placeholders = talleres.map(() => '?').join(',');
+/**
+ * Alcance CORREGIDO (13-oct-2026): antes esto filtraba por taller
+ * (`PO_TALLER.DESCRIPCION`, vía `req.usuarioMobile.talleres`), pero una placa
+ * pertenece a una OPERACIÓN, no a un taller — y un taller agrupa varias
+ * operaciones. Filtrar por taller traía placas ajenas (de otra operación del
+ * mismo taller), que es justo el bug que `colaS60Service.obtenerPendientes`
+ * ya había tenido que resolver con el mismo join (ver su comentario). Quien
+ * de verdad decide si una placa le pertenece a un usuario es
+ * `MAE_OPERACION_X_USUARIO` — la misma tabla que usa
+ * `poBuscarVehiculoController` para el mensaje "la unidad no le pertenece".
+ *
+ * `usuario` = `req.usuarioMobile.id` (= `CH_CODI_USUARIO`, confirmado en
+ * mobileAuthService.login), NO `req.usuarioMobile.talleres`.
+ *
+ * El snapshot de NEUMÁTICOS (mobileSnapshotService.js) se queda filtrando
+ * por taller a propósito — un neumático SÍ cuelga del taller
+ * (`PROYECTO_ACTUAL`), vía `MAE_TALLER_X_USUARIO`. No tocar ese.
+ */
+async function obtenerSnapshotVehiculos(usuario) {
+  if (!usuario) return [];
 
   const sql = `
     SELECT
@@ -75,6 +91,9 @@ async function obtenerSnapshotVehiculos(talleres) {
         FETCH FIRST 1 ROW ONLY
       ) AS FECHA_ULTIMA_INSPECCION_REGISTRO
     FROM ${BD_SCHEMA}.PO_VEHICULO VE
+    INNER JOIN ${BD_SCHEMA}.MAE_OPERACION_X_USUARIO USU
+      ON USU.IDOPERACION = VE.SECOPE
+     AND TRIM(USU.CH_CODI_USUARIO) = ?
     LEFT JOIN ${BD_SCHEMA}.PO_MARCA PM
       ON PM.ID = VE.IDMAR
     LEFT JOIN ${BD_SCHEMA}.PO_MODELO PMO
@@ -94,10 +113,12 @@ async function obtenerSnapshotVehiculos(talleres) {
       FROM ${BD_SCHEMA}.NEU_VKILOMETRAJE
       WHERE FECHA_INSPECCION IS NOT NULL
     ) klm ON klm.PLACA = VE.NUMPLA AND klm.RN = 1
-    WHERE TRIM(PTALL.DESCRIPCION) IN (${placeholders})
   `;
 
-  const rows = await db.query(sql, [PORCENTAJE_ALERTA, ...talleres]);
+  // Orden de los `?` en el texto de arriba: primero el de PORCENTAJE_ALERTA
+  // (dentro del SELECT, antes del FROM), después el del nuevo JOIN. El
+  // binding sigue el orden TEXTUAL, no el orden lógico de las cláusulas.
+  const rows = await db.query(sql, [PORCENTAJE_ALERTA, usuario]);
 
   return rows.map((row) => ({
     placa: row.PLACA,
