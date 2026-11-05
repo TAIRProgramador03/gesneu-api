@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { esPosicionRepuesto } = require('../utils/posiciones');
 require('dotenv').config();
 const BD_SCHEMA = process.env.DB_SCHEMA ?? 'SPEED400AT'
 /**
@@ -643,10 +644,13 @@ const neumaticoService = {
         const remanenteLimite = neumatico.REMANENTE_ACTUAL || neumatico.REMANENTE_INICIAL;
 
         const posicionActual = neumatico.POSICION_ACTUAL ? neumatico.POSICION_ACTUAL.trim() : '';
-        if (posicionActual === 'RES01') {
+        // Vale para cualquier repuesto (RES01, RES02): el neumático está guardado, no
+        // rodando. Antes se comparaba con el literal 'RES01' y el segundo repuesto caía
+        // en la rama de "rodando", que le exige gastarse entre inspección e inspección.
+        if (esPosicionRepuesto(posicionActual)) {
             // Repuesto: Puede mantenerse igual, pero no crecer
             if (REMANENTE > remanenteLimite) {
-                console.warn(`[registrarInspeccion] Validación Fallida RES01: ${REMANENTE} > ${remanenteLimite}`);
+                console.warn(`[registrarInspeccion] Validación Fallida repuesto ${posicionActual}: ${REMANENTE} > ${remanenteLimite}`);
                 throw new Error(`El remanente ingresado (${REMANENTE}) no puede ser mayor al anterior (${remanenteLimite}) para repuesto.`);
             }
         } else {
@@ -672,9 +676,9 @@ const neumaticoService = {
 
         // console.log(`[registrarInspeccion] Validación KM: Input ${KILOMETRO} vs Último ${ultimoOdometro}`);
 
-        // Si es RES01 (Repuesto), el kilometraje no aumenta (delta = 0)
+        // Si está de repuesto (RES01/RES02), el kilometraje no aumenta (delta = 0)
         let kmRecorrido = 0;
-        if (posicionActual !== 'RES01' && (neumatico.ESTADO_CODIGO === 'ASIGNADO' || neumatico.ESTADO_CODIGO === '002')) {
+        if (!esPosicionRepuesto(posicionActual) && (neumatico.ESTADO_CODIGO === 'ASIGNADO' || neumatico.ESTADO_CODIGO === '002')) {
             if (KILOMETRO <= ultimoOdometro) {
                 console.warn(`[registrarInspeccion] Error KM: ${KILOMETRO} <= ${ultimoOdometro}`);
                 throw new Error(`El kilometro ingresado (${KILOMETRO}) no puede ser menor o igual al último registrado (${ultimoOdometro}).`);

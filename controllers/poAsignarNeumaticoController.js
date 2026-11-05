@@ -44,18 +44,39 @@ const asignarNeumatico = async (req, res) => {
         placaKV = Placa;
         fechaDeAsignacionKV = FechaAsignacion;
 
-        // Validación básica
-        if (!CodigoNeumatico || !Remanente || !PresionAire || !Placa || !Posicion || TorqueAplicado === null || !Odometro || !FechaAsignacion || !ID_OPERACION || !COD_SUPERVISOR || !Taller) {
+        // Validación básica.
+        //
+        // El mensaje nombra los campos que faltan. Antes decía sólo "faltan campos
+        // obligatorios (incluya FechaRegistro...)" — un campo que ni siquiera existe en
+        // el payload — y no había forma de saber cuál era sin leer este código. Dos de
+        // ellos (ID_OPERACION y COD_SUPERVISOR) no los escribe el usuario: salen de la
+        // operación del vehículo, así que si vienen vacíos no hay nada que corregir en
+        // el formulario y el técnico se queda trabado sin entender por qué.
+        const faltantes = [];
+        if (!CodigoNeumatico) faltantes.push('CodigoNeumatico');
+        if (!Remanente) faltantes.push('Remanente');
+        if (!PresionAire) faltantes.push('PresionAire');
+        if (!Placa) faltantes.push('Placa');
+        if (!Posicion) faltantes.push('Posicion');
+        // El repuesto va con torque 0: sólo se rechaza si no vino ningún valor.
+        if (TorqueAplicado === null || TorqueAplicado === undefined) faltantes.push('TorqueAplicado');
+        if (!Odometro) faltantes.push('Odometro');
+        if (!FechaAsignacion) faltantes.push('FechaAsignacion');
+        if (!ID_OPERACION) faltantes.push('ID_OPERACION (operación del vehículo)');
+        if (!COD_SUPERVISOR) faltantes.push('COD_SUPERVISOR (supervisor de la operación)');
+        if (!Taller) faltantes.push('Taller');
+
+        if (faltantes.length > 0) {
             resultados.push({
                 index: i,
-                error: "Faltan campos obligatorios (incluya FechaRegistro en formato YYYY-MM-DD)."
+                error: `Faltan campos obligatorios en la posición ${Posicion || '(sin posición)'}: ${faltantes.join(', ')}.`
             });
             continue;
         }
         if (!/^[\d]{4}-[\d]{2}-[\d]{2}$/.test(FechaAsignacion)) {
             resultados.push({
                 index: i,
-                error: "El campo FechaRegistro debe tener formato YYYY-MM-DD."
+                error: "El campo FechaAsignacion debe tener formato YYYY-MM-DD."
             });
             continue;
         }
@@ -102,17 +123,25 @@ const asignarNeumatico = async (req, res) => {
         }
     }
 
-    // actualizar el kilometraje al vehiculo
+    const fallidos = resultados.filter((r) => r.error);
+    const exitosos = resultados.length - fallidos.length;
 
-    const sqlVKilometraje = `
-            INSERT INTO ${BD_SCHEMA}.NEU_VKILOMETRAJE
-            (PLACA, KILOMETRAJE, FECHA_ASIGNACION)
-                VALUES
-            (?, ?, ?)`;
+    // El kilometraje sólo se registra si de verdad se montó algo.
+    //
+    // Antes se insertaba siempre, incluso cuando las N asignaciones habían fallado:
+    // quedaba una lectura de odómetro en NEU_VKILOMETRAJE sin ningún movimiento ni
+    // neumático actualizado detrás. Caso real reportado el 2026-11-02.
+    if (exitosos > 0) {
+        const sqlVKilometraje = `
+                INSERT INTO ${BD_SCHEMA}.NEU_VKILOMETRAJE
+                (PLACA, KILOMETRAJE, FECHA_ASIGNACION)
+                    VALUES
+                (?, ?, ?)`;
 
-    await db.query(sqlVKilometraje, [
-        placaKV, odometroKV, fechaDeAsignacionKV
-    ]);
+        await db.query(sqlVKilometraje, [
+            placaKV, odometroKV, fechaDeAsignacionKV
+        ]);
+    }
 
     // Si solo era un objeto, mantener respuesta simple
     if (!Array.isArray(req.body)) {
@@ -122,7 +151,19 @@ const asignarNeumatico = async (req, res) => {
         }
         return res.status(200).json(r);
     }
-    // Si era array, devolver todos los resultados
+
+    // Si NINGUNA asignación salió, es un fallo, no un éxito parcial: devolver 400 para
+    // que el front lo trate como error. Con 207 el navegador lo daba por bueno y el
+    // usuario veía "asignado correctamente" sin que se hubiera grabado nada.
+    if (exitosos === 0) {
+        return res.status(400).json({
+            error: 'No se pudo asignar ningún neumático.',
+            detalle: fallidos.map((r) => r.detalle || r.error).join(' | '),
+            resultados,
+        });
+    }
+
+    // Éxito parcial: algunas sí, otras no.
     res.status(207).json({ resultados });
 };
 

@@ -1,8 +1,12 @@
 // neumaticosAsignacionMasivaService.js
 const XLSX = require('xlsx');
 const { randomUUID } = require('crypto');
+const { esPosicionRepuesto } = require('../utils/posiciones');
 
 const CONFIG = {
+  // Primer repuesto. Para preguntar "es un repuesto?" usar esPosicionRepuesto() y no
+  // comparar con esta constante: el literal significaba "es repuesto" y dejo de ser
+  // cierto cuando aparecio el RES02 (camioneta de 6, con dos repuestos).
   POSICION_REPUESTO: 'RES01',
 
   ID_ACCION_MONTAJE: 2,
@@ -44,6 +48,13 @@ const CONFIGURACIONES_POR_CANTIDAD = {
   5: {
     NOMBRE: 'Auto / camioneta',
     POSICIONES_VALIDAS: ['POS01', 'POS02', 'POS03', 'POS04', 'RES01'],
+    REMANENTE_MIN: 0, REMANENTE_MAX: 25,
+    PRESION_MIN: 25, PRESION_MAX: 50,
+    TORQUE_MIN: 110, TORQUE_MAX: 160,
+  },
+  6: {
+    NOMBRE: 'Camioneta, doble repuesto',
+    POSICIONES_VALIDAS: ['POS01', 'POS02', 'POS03', 'POS04', 'RES01', 'RES02'],
     REMANENTE_MIN: 0, REMANENTE_MAX: 25,
     PRESION_MIN: 25, PRESION_MAX: 50,
     TORQUE_MIN: 110, TORQUE_MAX: 160,
@@ -178,7 +189,7 @@ function validarFilaEstructura(fila, cfgVehiculo) {
   }
 
   // PRESION es obligatoria y validada IGUAL para todas las posiciones,
-  // incluyendo RES01 (repuesto también debe estar con presión correcta)
+  // incluyendo los repuestos (también deben estar con presión correcta)
   if (fila.PRESION === null || Number.isNaN(fila.PRESION)) {
     errores.push('PRESION vacía o no numérica');
   } else if (fila.PRESION < cfg.PRESION_MIN || fila.PRESION > cfg.PRESION_MAX) {
@@ -186,10 +197,10 @@ function validarFilaEstructura(fila, cfgVehiculo) {
   }
 
   // Solo TORQUE cambia de comportamiento según la posición
-  const esRepuesto = fila.POSICION === CONFIG.POSICION_REPUESTO;
+  const esRepuesto = esPosicionRepuesto(fila.POSICION);
   if (esRepuesto) {
     if (fila.TORQUE !== null && !Number.isNaN(fila.TORQUE) && fila.TORQUE !== 0) {
-      errores.push(`Posición ${CONFIG.POSICION_REPUESTO} (repuesto) no debe llevar torque (vino ${fila.TORQUE})`);
+      errores.push(`Posición ${fila.POSICION} (repuesto) no debe llevar torque (vino ${fila.TORQUE})`);
     }
   } else {
     if (fila.TORQUE === null || Number.isNaN(fila.TORQUE)) {
