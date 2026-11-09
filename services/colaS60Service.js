@@ -58,6 +58,32 @@ function obtenerFechaCorte() {
 }
 
 /**
+ * Usuarios a los que la cola NO les aplica (decidido el 09-nov-2026).
+ *
+ * Administracion necesita poder registrar sobre cualquier vehiculo en cualquier
+ * momento — entre otras cosas, para destrabar colas mal armadas. Para ellos la
+ * cola existe como informacion, no como candado. Para todos los demas sigue
+ * siendo obligatoria y en orden cronologico.
+ *
+ * Revierte el "sin excepciones por perfil" que se habia acordado el
+ * 21-oct-2026.
+ *
+ * OJO: esta misma lista esta en el front, en
+ * src/hooks/use-cola-s60.tsx (USUARIOS_SIN_COLA_S60), para que los botones no
+ * salgan deshabilitados. Si se agrega o quita a alguien, hay que tocar los dos
+ * lados: el front decide que se ve, este decide que se puede. La autoridad es
+ * esta; el front sin actualizar solo molesta, no rompe nada.
+ */
+const USUARIOS_SIN_COLA_S60 = ['GESNEU', 'EGAMBOA'];
+
+/** Si este usuario esta exceptuado. Compara sin espacios ni mayusculas. */
+function esUsuarioExento(usuario) {
+  const codigo = String(usuario ?? '').trim().toUpperCase();
+  if (!codigo) return false;
+  return USUARIOS_SIN_COLA_S60.includes(codigo);
+}
+
+/**
  * El par llega como texto libre del ERP y hay basura cargada a mano ("SC",
  * "nuevo", "S/N-S/N"). El usuario decidio que esas S60 simplemente NO entran a
  * la cola: si entraran, nadie podria cerrarlas y congelarian el taller para
@@ -313,12 +339,16 @@ async function obtenerCabeza(usuario) {
  */
 async function verificarPlacaHabilitada(usuario, placa) {
   const cabeza = await obtenerCabeza(usuario);
-  if (!cabeza) return { habilitada: true, cabeza: null };
+  if (!cabeza) return { habilitada: true, cabeza: null, exento: esUsuarioExento(usuario) };
+
+  // A los exceptuados se les devuelve la cabeza igual —la pantalla la muestra
+  // como aviso— pero habilitada, porque para ellos no bloquea.
+  if (esUsuarioExento(usuario)) return { habilitada: true, cabeza, exento: true };
 
   const placaPedida = String(placa ?? '').trim().toUpperCase();
   const placaCabeza = cabeza.placa.toUpperCase();
 
-  return { habilitada: placaPedida === placaCabeza, cabeza };
+  return { habilitada: placaPedida === placaCabeza, cabeza, exento: false };
 }
 
 /**
@@ -540,6 +570,7 @@ async function bloquearSiPlacaNoHabilitada(sessionUser, placa) {
 
 module.exports = {
   obtenerPendientes,
+  esUsuarioExento,
   obtenerCabeza,
   verificarPlacaHabilitada,
   buscarLineaPorPar,

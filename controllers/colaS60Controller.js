@@ -23,14 +23,18 @@ const obtenerEstado = async (req, res) => {
   try {
     const usuario = colaS60Service.usuarioDeSesion(req.session.user);
     const cabeza = await colaS60Service.obtenerCabeza(usuario);
+    // `exento` viaja en la respuesta para que la pantalla sepa si debe mostrar
+    // el aviso como candado o como simple informacion.
+    const exento = colaS60Service.esUsuarioExento(usuario);
 
     if (!cabeza) {
-      return res.json({ hayPendientes: false, cabeza: null });
+      return res.json({ hayPendientes: false, cabeza: null, exento });
     }
 
     return res.json({
       hayPendientes: true,
       cabeza,
+      exento,
     });
   } catch (error) {
     console.error('❌ [colaS60] Error al obtener el estado de la cola:', error.message);
@@ -56,7 +60,11 @@ const listarPendientes = async (req, res) => {
     const usuario = colaS60Service.usuarioDeSesion(req.session.user);
     const pendientes = await colaS60Service.obtenerPendientes(usuario, limite);
 
-    res.json({ total: pendientes.length, pendientes });
+    res.json({
+      total: pendientes.length,
+      pendientes,
+      exento: colaS60Service.esUsuarioExento(usuario),
+    });
   } catch (error) {
     console.error('❌ [colaS60] Error al listar pendientes:', error.message);
     res.status(500).json({ mensaje: error.message });
@@ -81,11 +89,15 @@ const verificarPlaca = async (req, res) => {
 
   try {
     const usuario = colaS60Service.usuarioDeSesion(req.session.user);
-    const { habilitada, cabeza } = await colaS60Service.verificarPlacaHabilitada(usuario, placa);
+    const { habilitada, cabeza, exento } = await colaS60Service.verificarPlacaHabilitada(
+      usuario,
+      placa
+    );
 
     res.json({
       habilitada,
       cabeza,
+      exento,
       mensaje: habilitada ? null : colaS60Service.mensajeBloqueo(cabeza),
     });
   } catch (error) {

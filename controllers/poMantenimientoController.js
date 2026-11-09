@@ -268,11 +268,17 @@ const desasignarConReemplazo = async (req, res) => {
         const placaOperacion =
             asignaciones[0]?.Placa ?? bajasDefinitivas[0]?.PLACA ?? null;
         const usuarioCola = colaS60Service.usuarioDeSesion(req.session.user);
+        // GESNEU / EGAMBOA no estan sujetos a la cola: registran sobre
+        // cualquier vehiculo en cualquier momento. Igual se consulta la cabeza,
+        // porque si el cambio que estan haciendo resulta ser una linea pendiente
+        // hay que marcarla como regularizada — si no, quedaria abierta y seria
+        // el resto del personal el que arrastra la cola trancada.
+        const exentoCola = colaS60Service.esUsuarioExento(usuarioCola);
         const cabezaCola = placaOperacion
             ? await colaS60Service.obtenerCabeza(usuarioCola)
             : null;
 
-        if (cabezaCola) {
+        if (cabezaCola && !exentoCola) {
             const mismaPlaca =
                 String(placaOperacion).trim().toUpperCase() === cabezaCola.placa.toUpperCase();
             if (!mismaPlaca) {
@@ -340,7 +346,15 @@ const desasignarConReemplazo = async (req, res) => {
                     // Ya no alcanza con que la S60 exista en algun lado: tiene
                     // que ser una linea todavia pendiente de la S60 que toca.
                     const linea = colaS60Service.buscarLineaPorPar(cabezaCola, mov.nuevo, mov.baja);
-                    if (!linea) {
+                    if (linea) {
+                        lineasACerrar.push({ linea, posicion: mov.pos });
+                        continue;
+                    }
+                    // Al exceptuado no se le rechaza por no coincidir con la
+                    // cabeza: simplemente este cambio no cierra ninguna linea de
+                    // ella y pasa a la validacion de siempre (la S60 tiene que
+                    // existir), que es como trabajaba el sistema antes de la cola.
+                    if (!exentoCola) {
                         return res.status(400).json({
                             error: `El cambio de la posición ${mov.pos} no corresponde a la S60 pendiente`,
                             detalle:
@@ -349,8 +363,6 @@ const desasignarConReemplazo = async (req, res) => {
                                 `del ${colaS60Service.formatearFecha(cabezaCola.fecha)}.`
                         });
                     }
-                    lineasACerrar.push({ linea, posicion: mov.pos });
-                    continue;
                 }
 
                 const rows = await db.query(sqlVerificarSalidas, [mov.placa, nuevoUsado]);
