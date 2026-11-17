@@ -568,11 +568,227 @@ async function bloquearSiPlacaNoHabilitada(sessionUser, placa) {
   };
 }
 
+/* =====================================================================
+ * Reporte de cambio de neumaticos
+ *
+ * Una S60 regularizada es, en la practica, el acta de un cambio: dice que
+ * neumatico salio y cual entro, en que placa y cuando. Eso es justo lo que
+ * pide el formato FR-OP-03 que hoy se llena a mano.
+ *
+ * La cabecera (almacen, comprobante, fecha, hora, placa, taller) sale de
+ * NEU_S60_REGULARIZADA tal cual. Lo demas —marca, medida, diseño, posicion,
+ * remanente, presion— se trae por los dos enlaces al movimiento que esa
+ * misma fila guarda.
+ *
+ * OJO con los enlaces: ID_MOVIMIENTO e ID_MOVIMIENTO_ENTRADA pueden venir
+ * NULL. `registrarRegularizacion` graba la fila igual aunque no resuelva el
+ * movimiento, a proposito, para no perder la regularizacion. Por eso cada
+ * dato del neumatico se busca primero por el movimiento y, si no hay, por el
+ * codigo contra el padron: asi el reporte sale con marca y medida aunque el
+ * enlace falte. Lo que no se puede recuperar sin movimiento es lo medido en
+ * el momento (remanente, presion), que queda vacio para llenar a mano.
+ * ===================================================================== */
+
+/**
+ * Tipo de vehiculo segun PO_VEHICULO.RECMEN2.
+ *
+ * Es el dato que va en la casilla "Vehiculo" del reporte de cambio. Ojo: NO
+ * es el mismo catalogo que el campo TIPO que devuelve la busqueda de placas
+ * (ese sale de PO_TIPO.DESCRIPCION). Aqui manda RECMEN2, que es lo que pidio
+ * el usuario para el formato.
+ */
+const TIPOS_VEHICULO = {
+  1: 'PICK-UP 4x4',
+  2: 'PICK-UP 4x2',
+  3: 'SUV',
+  4: 'SEDÁN',
+  5: 'CAMION',
+  6: 'MOTOCICLETA',
+  7: 'MINIBUS',
+  8: 'FURGONETA/VAN',
+  9: 'EQUIPO INDUSTRIAL',
+  10: 'DEPORTIVO COUPÉ',
+};
+
+/**
+ * Lineas regularizadas de una placa, con todo lo que necesita el reporte.
+ * Una fila por linea de S60; agruparlas es trabajo de quien llama.
+ */
+async function listarRegularizadasPorPlaca(placa) {
+  const placaLimpia = String(placa ?? '').trim();
+  if (!placaLimpia) return [];
+
+  const sql = `
+    SELECT
+      R.S60_ALMACEN                AS ALMACEN,
+      R.S60_COMPROBANTE            AS COMPROBANTE,
+      R.S60_CORRELATIVO            AS CORRELATIVO,
+      R.S60_FECHA                  AS FECHA,
+      R.S60_HORA                   AS HORA,
+      TRIM(R.PLACA)                AS PLACA,
+      TRIM(R.PAR)                  AS PAR,
+      TRIM(R.CODIGO_ENTRANTE)      AS CODIGO_ENTRANTE,
+      TRIM(R.CODIGO_SALIENTE)      AS CODIGO_SALIENTE,
+      R.TALLER                     AS TALLER,
+      R.USUARIO                    AS USUARIO,
+      TRIM(H.MHREF6)               AS OT,
+      VE.RECMEN2                   AS TIPO_VEHICULO_COD,
+
+      -- El que sale
+      MS.POSICION_ANTERIOR         AS POSICION_SALIDA,
+      MS.REMANENTE_MEDIDO          AS REMANENTE_SALIDA,
+      MS.PRESION_MEDIDA            AS PRESION_SALIDA,
+      MS.ODOMETRO_VEHICULO         AS ODOMETRO,
+      MS.KM_RECORRIDOS_ETAPA       AS KM_ETAPA,
+      MS.OBS                       AS OBSERVACION,
+      MS.TIPO_BAJA                 AS TIPO_BAJA,
+      NA.DESCRIPCION               AS ACCION_SALIDA,
+      COALESCE(PS.DISENO, PSC.DISENO)  AS DISENO_SALIDA,
+      COALESCE(PS.MEDIDA, PSC.MEDIDA)  AS MEDIDA_SALIDA,
+      COALESCE(KS.MARCA,  KSC.MARCA)   AS MARCA_SALIDA,
+
+      -- El que entra
+      ME.POSICION_NUEVA            AS POSICION_ENTRADA,
+      ME.REMANENTE_MEDIDO          AS REMANENTE_ENTRADA,
+      ME.PRESION_MEDIDA            AS PRESION_ENTRADA,
+      ME.TORQUE_APLICADO           AS TORQUE_ENTRADA,
+      COALESCE(PE.DISENO, PEC.DISENO)  AS DISENO_ENTRADA,
+      COALESCE(PE.MEDIDA, PEC.MEDIDA)  AS MEDIDA_ENTRADA,
+      COALESCE(KE.MARCA,  KEC.MARCA)   AS MARCA_ENTRADA
+
+    FROM ${BD_SCHEMA}.NEU_S60_REGULARIZADA R
+
+    -- La orden de trabajo vive en la CABECERA de la S60 en el ERP, no en
+    -- NEU_S60_REGULARIZADA: TMOVH.MHREF6. Es el mismo campo con el que la
+    -- cola filtra las S60 de neumaticos (LIKE '%NEU' / '%SIN' / '%COB'), asi
+    -- que llega con ese sufijo pegado; se imprime tal cual.
+    --
+    -- MHTMOV = 60 y MHCMOV = 'S' son lo que identifica a una S60. LEFT y no
+    -- INNER: si la cabecera no aparece, el reporte sale igual con la casilla
+    -- de O.T. vacia.
+    LEFT JOIN ${BD_SCHEMA}.TMOVH H
+      ON H.MHALMA = TRIM(R.S60_ALMACEN)
+     AND H.MHCOMP = R.S60_COMPROBANTE
+     AND H.MHTMOV = '60'
+     AND H.MHCMOV = 'S'
+
+    -- El tipo de vehiculo sale de PO_VEHICULO.RECMEN2, por placa. Se
+    -- devuelve el numero crudo: el nombre se arma en JS (ver TIPOS_VEHICULO)
+    -- para no meter acentos en el SQL.
+    LEFT JOIN ${BD_SCHEMA}.PO_VEHICULO VE
+      ON TRIM(VE.NUMPLA) = TRIM(R.PLACA)
+
+    -- Movimiento de salida (el que se desmonta) y su neumatico
+    LEFT JOIN ${BD_SCHEMA}.NEU_MOVIMIENTOS MS ON MS."ID"      = R.ID_MOVIMIENTO
+    LEFT JOIN ${BD_SCHEMA}.NEU_ACCION      NA ON NA.ID_ACCION = MS.ID_ACCION
+    LEFT JOIN ${BD_SCHEMA}.NEU_PADRON      PS ON PS."ID"      = MS.ID_NEUMATICO
+    LEFT JOIN ${BD_SCHEMA}.NEU_MARCA       KS ON KS.ID_MARCA  = PS.ID_MARCA
+
+    -- Movimiento de entrada (el que se monta) y su neumatico
+    LEFT JOIN ${BD_SCHEMA}.NEU_MOVIMIENTOS ME ON ME."ID"      = R.ID_MOVIMIENTO_ENTRADA
+    LEFT JOIN ${BD_SCHEMA}.NEU_PADRON      PE ON PE."ID"      = ME.ID_NEUMATICO
+    LEFT JOIN ${BD_SCHEMA}.NEU_MARCA       KE ON KE.ID_MARCA  = PE.ID_MARCA
+
+    -- Respaldo por codigo, para las filas que quedaron sin enlace
+    LEFT JOIN ${BD_SCHEMA}.NEU_PADRON     PSC ON TRIM(PSC.CODIGO) = TRIM(R.CODIGO_SALIENTE)
+    LEFT JOIN ${BD_SCHEMA}.NEU_MARCA      KSC ON KSC.ID_MARCA     = PSC.ID_MARCA
+    LEFT JOIN ${BD_SCHEMA}.NEU_PADRON     PEC ON TRIM(PEC.CODIGO) = TRIM(R.CODIGO_ENTRANTE)
+    LEFT JOIN ${BD_SCHEMA}.NEU_MARCA      KEC ON KEC.ID_MARCA     = PEC.ID_MARCA
+
+    WHERE TRIM(R.PLACA) = ?
+    ORDER BY R.S60_FECHA DESC, R.S60_HORA DESC, R.S60_COMPROBANTE DESC, R.S60_CORRELATIVO ASC
+  `;
+
+  const filas = await db.query(sql, [placaLimpia]);
+  return Array.isArray(filas) ? filas : [];
+}
+
+/**
+ * Lo mismo, ya agrupado: un elemento por S60 (almacen + comprobante) con sus
+ * lineas adentro. Un reporte es una S60 entera, no una linea suelta.
+ */
+async function listarReportesCambioPorPlaca(placa) {
+  const filas = await listarRegularizadasPorPlaca(placa);
+  const porS60 = new Map();
+
+  for (const f of filas) {
+    const clave = `${String(f.ALMACEN ?? '').trim()}-${Number(f.COMPROBANTE)}`;
+
+    if (!porS60.has(clave)) {
+      porS60.set(clave, {
+        clave,
+        almacen: String(f.ALMACEN ?? '').trim(),
+        comprobante: Number(f.COMPROBANTE),
+        fecha: Number(f.FECHA),
+        hora: Number(f.HORA),
+        fechaTexto: formatearFecha(f.FECHA),
+        horaTexto: formatearHora(f.HORA),
+        placa: String(f.PLACA ?? '').trim(),
+        taller: f.TALLER ? String(f.TALLER).trim() : null,
+        usuario: f.USUARIO ? String(f.USUARIO).trim() : null,
+        // Orden de trabajo: viene de la cabecera de la S60 en el ERP.
+        ot: f.OT && String(f.OT).trim() !== '' ? String(f.OT).trim() : null,
+        // Un RECMEN2 que no este en el catalogo deja la casilla vacia, en
+        // vez de imprimir un numero suelto que nadie sabe leer.
+        tipoVehiculo: TIPOS_VEHICULO[Number(f.TIPO_VEHICULO_COD)] ?? null,
+        // Odometro y observacion son del cambio, no de cada linea: se toma
+        // el primero que venga con valor.
+        odometro: null,
+        observacion: null,
+        lineas: [],
+      });
+    }
+
+    const s60 = porS60.get(clave);
+
+    if (s60.odometro === null && f.ODOMETRO !== null && f.ODOMETRO !== undefined) {
+      s60.odometro = Number(f.ODOMETRO);
+    }
+    if (!s60.observacion && f.OBSERVACION && String(f.OBSERVACION).trim() !== '') {
+      s60.observacion = String(f.OBSERVACION).trim();
+    }
+
+    s60.lineas.push({
+      correlativo: Number(f.CORRELATIVO),
+      par: String(f.PAR ?? '').trim(),
+      // Sale del movimiento. Sin enlace queda null y el reporte la imprime
+      // vacia, para escribirla a mano.
+      posicion: f.POSICION_SALIDA ?? f.POSICION_ENTRADA ?? null,
+      sale: {
+        codigo: String(f.CODIGO_SALIENTE ?? '').trim(),
+        marca: f.MARCA_SALIDA ?? null,
+        medida: f.MEDIDA_SALIDA ?? null,
+        diseno: f.DISENO_SALIDA ?? null,
+        remanente: f.REMANENTE_SALIDA ?? null,
+        presion: f.PRESION_SALIDA ?? null,
+        posicion: f.POSICION_SALIDA ?? null,
+        accion: f.ACCION_SALIDA ?? null,
+        tipoBaja: f.TIPO_BAJA ?? null,
+        kmEtapa: f.KM_ETAPA ?? null,
+      },
+      entra: {
+        codigo: String(f.CODIGO_ENTRANTE ?? '').trim(),
+        marca: f.MARCA_ENTRADA ?? null,
+        medida: f.MEDIDA_ENTRADA ?? null,
+        diseno: f.DISENO_ENTRADA ?? null,
+        remanente: f.REMANENTE_ENTRADA ?? null,
+        presion: f.PRESION_ENTRADA ?? null,
+        torque: f.TORQUE_ENTRADA ?? null,
+        posicion: f.POSICION_ENTRADA ?? null,
+      },
+    });
+  }
+
+  return Array.from(porS60.values());
+}
+
 module.exports = {
   obtenerPendientes,
   esUsuarioExento,
   obtenerCabeza,
   verificarPlacaHabilitada,
+  listarRegularizadasPorPlaca,
+  listarReportesCambioPorPlaca,
   buscarLineaPorPar,
   buscarIdUltimoMovimiento,
   registrarRegularizacion,

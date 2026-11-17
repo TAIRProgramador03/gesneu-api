@@ -106,4 +106,34 @@ const verificarPlaca = async (req, res) => {
   }
 };
 
-module.exports = { obtenerEstado, listarPendientes, verificarPlaca };
+/**
+ * GET /api/cola-s60/reportes/:placa
+ *
+ * Las S60 ya regularizadas de una placa, agrupadas por comprobante, con los
+ * datos de los neumaticos que salieron y entraron. Es el insumo del reporte
+ * de cambio de neumaticos; el PDF se arma en el navegador.
+ *
+ * No aplica la cola a proposito: la cola decide sobre que placa se puede
+ * TRABAJAR, y esto no cambia nada, solo lee lo ya hecho. Bloquearlo dejaria
+ * sin poder reimprimir un cambio viejo a quien tenga otra S60 pendiente.
+ */
+const listarReportesCambio = async (req, res) => {
+  if (!req.session.user || !req.session.user.usuario) {
+    return res.status(401).json({ mensaje: 'No autenticado' });
+  }
+
+  const { placa } = req.params;
+  if (!placa || placa.trim() === '') {
+    return res.status(400).json({ mensaje: 'La placa es requerida' });
+  }
+
+  try {
+    const reportes = await colaS60Service.listarReportesCambioPorPlaca(placa);
+    res.json({ total: reportes.length, reportes });
+  } catch (error) {
+    console.error('❌ [colaS60] Error al listar los reportes de cambio:', error.message);
+    res.status(500).json({ mensaje: error.message });
+  }
+};
+
+module.exports = { obtenerEstado, listarPendientes, verificarPlaca, listarReportesCambio };

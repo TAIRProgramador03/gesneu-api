@@ -64,4 +64,27 @@ router.get('/pendientes', colaS60Controller.listarPendientes);
  */
 router.get('/placa/:placa', colaS60Controller.verificarPlaca);
 
+/**
+ * @swagger
+ * /api/cola-s60/reportes/{placa}:
+ *   get:
+ *     summary: S60 ya regularizadas de una placa, para el reporte de cambio
+ *     description: >
+ *       Agrupadas por comprobante, con los datos de los neumaticos que
+ *       salieron y los que entraron. Alimenta el PDF del reporte de cambio
+ *       de neumaticos, que se arma en el navegador.
+ *     tags: [Cola S60]
+ *     parameters:
+ *       - in: path
+ *         name: placa
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: "{ total, reportes }"
+ *       401:
+ *         description: No autenticado
+ */
+router.get('/reportes/:placa', colaS60Controller.listarReportesCambio);
+
 module.exports = router;
