@@ -941,18 +941,31 @@ async function listarReportesCambioPorPlaca(placa) {
  * que entraron y los que nadie toco— y abajo solo los retirados. Eso no esta
  * guardado en ningun lado: hay que reconstruirlo del historial.
  *
- * LA REGLA: para cada posicion se busca su ultimo movimiento hasta el del
- * cambio, y la posicion esta ocupada solo si ese movimiento TERMINO en ella.
- * Funciona porque las convenciones de NEU_MOVIMIENTOS lo permiten:
+ * LA REGLA: se mira NEUMATICO por NEUMATICO, no posicion por posicion. De
+ * cada neumatico que paso por la placa se toma su ultimo movimiento hasta el
+ * del cambio, y esta montado solo si ese movimiento TERMINO en una posicion
+ * (POSICION_NUEVA con valor). Las convenciones de NEU_MOVIMIENTOS lo
+ * permiten:
  *
  *   montaje      -> POSICION_ANTERIOR null,  POSICION_NUEVA = la posicion
  *   desmontaje   -> POSICION_ANTERIOR = pos, POSICION_NUEVA NULL
  *   rotacion     -> ANTERIOR = de donde salio, NUEVA = a donde fue
  *   inspeccion   -> las dos iguales
  *
- * Por eso el UNION ALL: una rotacion tiene que contar para las DOS
- * posiciones. En la de origen el ultimo movimiento termina en otra, asi que
- * queda vacia sola, sin reglas aparte.
+ * POR QUE NO POR POSICION: una PERMUTA entre dos posiciones se graba como
+ * dos rotaciones seguidas, y la segunda sale de la posicion donde la primera
+ * acababa de dejar un neumatico:
+ *
+ *   id 23359  POS03 -> RES01   neumatico A
+ *   id 23360  RES01 -> POS03   neumatico B
+ *
+ * Mirando RES01, su ultimo movimiento (23360) SALE de RES01, asi que la
+ * posicion parecia vacia y el repuesto desaparecia del reporte. Pasa de
+ * verdad: placa CFE-927, S60 35-36583. Mirando el neumatico A, su ultimo
+ * movimiento termina en RES01 y no hay nada que interpretar.
+ *
+ * Si dos neumaticos reclamaran la misma posicion —solo posible con el
+ * historial roto— gana el movimiento mas reciente.
  *
  * ES UNA RECONSTRUCCION, no un dato guardado: si al historial le falta un
  * movimiento, aqui sale una posicion de mas o de menos. Por eso quien arma
@@ -967,7 +980,7 @@ async function obtenerMontadosAlMomento(placa, idMovimientoAncla) {
   const sql = `
     WITH MOV AS (
       SELECT NM."ID"              AS ID_MOV,
-             NM.POSICION_ANTERIOR AS POS_ANT,
+             NM.ID_NEUMATICO      AS ID_NEU,
              NM.POSICION_NUEVA    AS POS_NUE,
              TRIM(PA.CODIGO)      AS CODIGO,
              NM.REMANENTE_MEDIDO  AS REMANENTE,
@@ -980,25 +993,26 @@ async function obtenerMontadosAlMomento(placa, idMovimientoAncla) {
       LEFT JOIN ${BD_SCHEMA}.NEU_MARCA  MK ON MK.ID_MARCA = PA.ID_MARCA
       WHERE TRIM(NM.PLACA) = ?
         AND NM."ID" <= ?
+        AND NM.ID_NEUMATICO IS NOT NULL
     ),
-    POR_POSICION AS (
-      SELECT TRIM(POS_NUE) AS POSICION, ID_MOV, TRIM(POS_NUE) AS TERMINO_EN,
-             CODIGO, REMANENTE, PRESION, DISENO, MEDIDA, MARCA
-      FROM MOV WHERE POS_NUE IS NOT NULL AND TRIM(POS_NUE) <> ''
-      UNION ALL
-      SELECT TRIM(POS_ANT) AS POSICION, ID_MOV, TRIM(POS_NUE) AS TERMINO_EN,
-             CODIGO, REMANENTE, PRESION, DISENO, MEDIDA, MARCA
-      FROM MOV WHERE POS_ANT IS NOT NULL AND TRIM(POS_ANT) <> ''
+    ULTIMO_DEL_NEUMATICO AS (
+      SELECT M.*, ROW_NUMBER() OVER (PARTITION BY M.ID_NEU ORDER BY M.ID_MOV DESC) AS RN
+      FROM MOV M
     ),
-    ULTIMO AS (
-      SELECT P.*, ROW_NUMBER() OVER (PARTITION BY P.POSICION ORDER BY P.ID_MOV DESC) AS RN
-      FROM POR_POSICION P
+    MONTADOS AS (
+      SELECT TRIM(POS_NUE) AS POSICION, ID_MOV, CODIGO, REMANENTE, PRESION, DISENO, MEDIDA, MARCA
+      FROM ULTIMO_DEL_NEUMATICO
+      WHERE RN = 1
+        AND POS_NUE IS NOT NULL
+        AND TRIM(POS_NUE) <> ''
+    ),
+    UNO_POR_POSICION AS (
+      SELECT P.*, ROW_NUMBER() OVER (PARTITION BY P.POSICION ORDER BY P.ID_MOV DESC) AS RN_POS
+      FROM MONTADOS P
     )
     SELECT POSICION, CODIGO, MARCA, MEDIDA, DISENO, REMANENTE, PRESION
-    FROM ULTIMO
-    WHERE RN = 1
-      AND TERMINO_EN IS NOT NULL
-      AND TERMINO_EN = POSICION
+    FROM UNO_POR_POSICION
+    WHERE RN_POS = 1
     ORDER BY POSICION
   `;
 
