@@ -136,4 +136,39 @@ const listarReportesCambio = async (req, res) => {
   }
 };
 
-module.exports = { obtenerEstado, listarPendientes, verificarPlaca, listarReportesCambio };
+/**
+ * GET /api/cola-s60/reportes/:placa/:almacen/:comprobante
+ *
+ * Un reporte concreto, con `montados`: el juego completo que quedo en el
+ * vehiculo justo despues de ese cambio. Esa reconstruccion cuesta una
+ * consulta extra, por eso no viaja en el listado y solo se pide al imprimir.
+ */
+const obtenerReporteCambio = async (req, res) => {
+  if (!req.session.user || !req.session.user.usuario) {
+    return res.status(401).json({ mensaje: 'No autenticado' });
+  }
+
+  const { placa, almacen, comprobante } = req.params;
+  if (!placa || !almacen || !comprobante) {
+    return res.status(400).json({ mensaje: 'Faltan placa, almacén o comprobante' });
+  }
+
+  try {
+    const reporte = await colaS60Service.obtenerReporteCambio(placa, almacen, comprobante);
+    if (!reporte) {
+      return res.status(404).json({ mensaje: 'No se encontró esa S60 regularizada' });
+    }
+    res.json({ reporte });
+  } catch (error) {
+    console.error('❌ [colaS60] Error al obtener el reporte de cambio:', error.message);
+    res.status(500).json({ mensaje: error.message });
+  }
+};
+
+module.exports = {
+  obtenerEstado,
+  listarPendientes,
+  verificarPlaca,
+  listarReportesCambio,
+  obtenerReporteCambio,
+};

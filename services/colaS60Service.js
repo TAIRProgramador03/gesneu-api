@@ -611,6 +611,91 @@ const TIPOS_VEHICULO = {
 };
 
 /**
+ * "09:00 AM" a partir de la hora y el minuto sueltos de la O.T.
+ *
+ * El formato en papel se llena en 12 horas con AM/PM, asi que se imprime
+ * igual. Si la O.T. no tiene la fecha cargada, devuelve null y la casilla
+ * sale vacia para escribirla a mano.
+ */
+function horaDesdeHM(hora, minuto) {
+  if (hora === null || hora === undefined) return null;
+  const h = Number(hora);
+  const m = Number(minuto ?? 0);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+
+  const sufijo = h < 12 ? 'AM' : 'PM';
+  // 0 h es 12 AM y 12 h es 12 PM: el modulo solo no lo resuelve.
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${sufijo}`;
+}
+
+/** El nombre si se pudo resolver; si no, el codigo; si no hay nada, null. */
+function nombreODigo(codigo, mapa) {
+  const cod = codigo ? String(codigo).trim() : '';
+  if (cod === '') return null;
+  return mapa.get(cod) ?? cod;
+}
+
+/**
+ * Nombres de mecanicos y supervisores, a partir de sus codigos.
+ *
+ * Se hace en una consulta aparte y no con JOINs en la consulta grande para
+ * no tener que concatenar nombre y apellidos en SQL. Son pocos codigos por
+ * reporte, asi que el costo es despreciable.
+ *
+ * Devuelve dos mapas codigo -> nombre. Un codigo que no resuelva no aparece
+ * en el mapa, y quien llama imprime el codigo tal cual: mas vale "RQUISPE"
+ * que una casilla vacia.
+ */
+async function resolverNombres(codigosMecanico, codigosSupervisor) {
+  const mecanicos = new Map();
+  const supervisores = new Map();
+
+  const unicos = (lista) =>
+    [...new Set(lista.filter((c) => c && String(c).trim() !== '').map((c) => String(c).trim()))];
+
+  const codMec = unicos(codigosMecanico);
+  const codSup = unicos(codigosSupervisor);
+
+  if (codMec.length > 0) {
+    const marcas = codMec.map(() => '?').join(', ');
+    const filas = await db.query(
+      `SELECT TRIM(CH_CODI_MECANICO) AS COD, TRIM(VC_NOMB_MECANICO) AS NOMBRE
+         FROM ${BD_SCHEMA}.GM_MMECANICO
+        WHERE TRIM(CH_CODI_MECANICO) IN (${marcas})`,
+      codMec
+    );
+    for (const f of filas ?? []) {
+      if (f.NOMBRE && String(f.NOMBRE).trim() !== '') {
+        mecanicos.set(String(f.COD).trim(), String(f.NOMBRE).trim());
+      }
+    }
+  }
+
+  if (codSup.length > 0) {
+    const marcas = codSup.map(() => '?').join(', ');
+    const filas = await db.query(
+      `SELECT TRIM(CH_CODI_USUARIO)       AS COD,
+              TRIM(VC_DESC_NOMB_USUARIO)  AS NOMBRE,
+              TRIM(VC_DESC_APELL_PATERNO) AS PATERNO,
+              TRIM(VC_DESC_APELL_MATERNO) AS MATERNO
+         FROM ${BD_SCHEMA}.MAE_USUARIO
+        WHERE TRIM(CH_CODI_USUARIO) IN (${marcas})`,
+      codSup
+    );
+    for (const f of filas ?? []) {
+      const nombre = [f.NOMBRE, f.PATERNO, f.MATERNO]
+        .map((p) => (p ? String(p).trim() : ''))
+        .filter((p) => p !== '')
+        .join(' ');
+      if (nombre !== '') supervisores.set(String(f.COD).trim(), nombre);
+    }
+  }
+
+  return { mecanicos, supervisores };
+}
+
+/**
  * Lineas regularizadas de una placa, con todo lo que necesita el reporte.
  * Una fila por linea de S60; agruparlas es trabajo de quien llama.
  */
@@ -631,8 +716,62 @@ async function listarRegularizadasPorPlaca(placa) {
       TRIM(R.CODIGO_SALIENTE)      AS CODIGO_SALIENTE,
       R.TALLER                     AS TALLER,
       R.USUARIO                    AS USUARIO,
+      -- Los enlaces al movimiento: sirven de ancla para reconstruir como
+      -- quedo el vehiculo justo despues del cambio.
+      R.ID_MOVIMIENTO              AS ID_MOV_SALIDA,
+      R.ID_MOVIMIENTO_ENTRADA      AS ID_MOV_ENTRADA,
       TRIM(H.MHREF6)               AS OT,
       VE.RECMEN2                   AS TIPO_VEHICULO_COD,
+
+      -- Mecanico y supervisor de la orden de trabajo.
+      --
+      -- El camino es largo: la O.T. (TMOVH.MHREF6) se busca en
+      -- PO_TEMPREGTAB.OT, de ahi sale IDOTGM, que es la clave de GM_HOT
+      -- (NU_CODI_OT), y es GM_HOT quien guarda los dos codigos.
+      --
+      -- Van como subconsultas escalares y NO como JOIN a proposito: una
+      -- misma O.T. puede tener mas de una fila en PO_TEMPREGTAB, y un JOIN
+      -- multiplicaria las lineas de la S60. El FETCH FIRST garantiza una.
+      -- Aqui solo salen los CODIGOS; los nombres se resuelven despues, en
+      -- una consulta aparte, para no armar concatenaciones en SQL.
+      (SELECT TRIM(HOT.CH_CODI_MECANICO)
+         FROM ${BD_SCHEMA}.PO_TEMPREGTAB TR
+         INNER JOIN ${BD_SCHEMA}.GM_HOT HOT ON HOT.NU_CODI_OT = TR.IDOTGM
+        WHERE TRIM(TR.OT) = TRIM(H.MHREF6)
+        FETCH FIRST 1 ROW ONLY)   AS COD_MECANICO,
+      (SELECT TRIM(HOT.CH_CODI_USUA_CALI)
+         FROM ${BD_SCHEMA}.PO_TEMPREGTAB TR
+         INNER JOIN ${BD_SCHEMA}.GM_HOT HOT ON HOT.NU_CODI_OT = TR.IDOTGM
+        WHERE TRIM(TR.OT) = TRIM(H.MHREF6)
+        FETCH FIRST 1 ROW ONLY)   AS COD_SUPERVISOR_OT,
+
+      -- Horas de entrada y salida del taller, de la misma O.T.
+      --
+      -- DT_FECH_INIC_OT y DT_FECH_FINA_OT son fecha + hora, y en el formato
+      -- solo va la hora. Se piden HOUR y MINUTE por separado, como enteros,
+      -- en vez de formatear en SQL: asi no depende de como el driver
+      -- entregue un timestamp ni de la zona horaria del job, que es
+      -- justamente lo que ya nos corrio un dia las fechas del backend.
+      (SELECT HOUR(HOT.DT_FECH_INIC_OT)
+         FROM ${BD_SCHEMA}.PO_TEMPREGTAB TR
+         INNER JOIN ${BD_SCHEMA}.GM_HOT HOT ON HOT.NU_CODI_OT = TR.IDOTGM
+        WHERE TRIM(TR.OT) = TRIM(H.MHREF6)
+        FETCH FIRST 1 ROW ONLY)   AS HORA_INGRESO_H,
+      (SELECT MINUTE(HOT.DT_FECH_INIC_OT)
+         FROM ${BD_SCHEMA}.PO_TEMPREGTAB TR
+         INNER JOIN ${BD_SCHEMA}.GM_HOT HOT ON HOT.NU_CODI_OT = TR.IDOTGM
+        WHERE TRIM(TR.OT) = TRIM(H.MHREF6)
+        FETCH FIRST 1 ROW ONLY)   AS HORA_INGRESO_M,
+      (SELECT HOUR(HOT.DT_FECH_FINA_OT)
+         FROM ${BD_SCHEMA}.PO_TEMPREGTAB TR
+         INNER JOIN ${BD_SCHEMA}.GM_HOT HOT ON HOT.NU_CODI_OT = TR.IDOTGM
+        WHERE TRIM(TR.OT) = TRIM(H.MHREF6)
+        FETCH FIRST 1 ROW ONLY)   AS HORA_SALIDA_H,
+      (SELECT MINUTE(HOT.DT_FECH_FINA_OT)
+         FROM ${BD_SCHEMA}.PO_TEMPREGTAB TR
+         INNER JOIN ${BD_SCHEMA}.GM_HOT HOT ON HOT.NU_CODI_OT = TR.IDOTGM
+        WHERE TRIM(TR.OT) = TRIM(H.MHREF6)
+        FETCH FIRST 1 ROW ONLY)   AS HORA_SALIDA_M,
 
       -- El que sale
       MS.POSICION_ANTERIOR         AS POSICION_SALIDA,
@@ -709,6 +848,10 @@ async function listarRegularizadasPorPlaca(placa) {
  */
 async function listarReportesCambioPorPlaca(placa) {
   const filas = await listarRegularizadasPorPlaca(placa);
+  const { mecanicos, supervisores } = await resolverNombres(
+    filas.map((f) => f.COD_MECANICO),
+    filas.map((f) => f.COD_SUPERVISOR_OT)
+  );
   const porS60 = new Map();
 
   for (const f of filas) {
@@ -731,6 +874,13 @@ async function listarReportesCambioPorPlaca(placa) {
         // Un RECMEN2 que no este en el catalogo deja la casilla vacia, en
         // vez de imprimir un numero suelto que nadie sabe leer.
         tipoVehiculo: TIPOS_VEHICULO[Number(f.TIPO_VEHICULO_COD)] ?? null,
+        // Quienes firman. Si el nombre no resuelve se imprime el codigo:
+        // "RQUISPE" dice mas que una casilla en blanco.
+        mecanico: nombreODigo(f.COD_MECANICO, mecanicos),
+        supervisor: nombreODigo(f.COD_SUPERVISOR_OT, supervisores),
+        // Entrada y salida del taller, de la O.T.: solo la hora.
+        horaIngreso: horaDesdeHM(f.HORA_INGRESO_H, f.HORA_INGRESO_M),
+        horaSalida: horaDesdeHM(f.HORA_SALIDA_H, f.HORA_SALIDA_M),
         // Odometro y observacion son del cambio, no de cada linea: se toma
         // el primero que venga con valor.
         odometro: null,
@@ -751,6 +901,8 @@ async function listarReportesCambioPorPlaca(placa) {
     s60.lineas.push({
       correlativo: Number(f.CORRELATIVO),
       par: String(f.PAR ?? '').trim(),
+      idMovimientoSalida: f.ID_MOV_SALIDA ?? null,
+      idMovimientoEntrada: f.ID_MOV_ENTRADA ?? null,
       // Sale del movimiento. Sin enlace queda null y el reporte la imprime
       // vacia, para escribirla a mano.
       posicion: f.POSICION_SALIDA ?? f.POSICION_ENTRADA ?? null,
@@ -782,6 +934,122 @@ async function listarReportesCambioPorPlaca(placa) {
   return Array.from(porS60.values());
 }
 
+/**
+ * Como quedo el vehiculo justo despues de un cambio.
+ *
+ * El formato de papel lista arriba el JUEGO COMPLETO que queda montado —los
+ * que entraron y los que nadie toco— y abajo solo los retirados. Eso no esta
+ * guardado en ningun lado: hay que reconstruirlo del historial.
+ *
+ * LA REGLA: para cada posicion se busca su ultimo movimiento hasta el del
+ * cambio, y la posicion esta ocupada solo si ese movimiento TERMINO en ella.
+ * Funciona porque las convenciones de NEU_MOVIMIENTOS lo permiten:
+ *
+ *   montaje      -> POSICION_ANTERIOR null,  POSICION_NUEVA = la posicion
+ *   desmontaje   -> POSICION_ANTERIOR = pos, POSICION_NUEVA NULL
+ *   rotacion     -> ANTERIOR = de donde salio, NUEVA = a donde fue
+ *   inspeccion   -> las dos iguales
+ *
+ * Por eso el UNION ALL: una rotacion tiene que contar para las DOS
+ * posiciones. En la de origen el ultimo movimiento termina en otra, asi que
+ * queda vacia sola, sin reglas aparte.
+ *
+ * ES UNA RECONSTRUCCION, no un dato guardado: si al historial le falta un
+ * movimiento, aqui sale una posicion de mas o de menos. Por eso quien arma
+ * el reporte pisa este resultado con los entrantes de la S60, que si son
+ * dato cierto.
+ */
+async function obtenerMontadosAlMomento(placa, idMovimientoAncla) {
+  const placaLimpia = String(placa ?? '').trim();
+  const ancla = Number(idMovimientoAncla);
+  if (!placaLimpia || !Number.isFinite(ancla) || ancla <= 0) return [];
+
+  const sql = `
+    WITH MOV AS (
+      SELECT NM."ID"              AS ID_MOV,
+             NM.POSICION_ANTERIOR AS POS_ANT,
+             NM.POSICION_NUEVA    AS POS_NUE,
+             TRIM(PA.CODIGO)      AS CODIGO,
+             NM.REMANENTE_MEDIDO  AS REMANENTE,
+             NM.PRESION_MEDIDA    AS PRESION,
+             PA.DISENO            AS DISENO,
+             PA.MEDIDA            AS MEDIDA,
+             MK.MARCA             AS MARCA
+      FROM ${BD_SCHEMA}.NEU_MOVIMIENTOS NM
+      LEFT JOIN ${BD_SCHEMA}.NEU_PADRON PA ON PA."ID"     = NM.ID_NEUMATICO
+      LEFT JOIN ${BD_SCHEMA}.NEU_MARCA  MK ON MK.ID_MARCA = PA.ID_MARCA
+      WHERE TRIM(NM.PLACA) = ?
+        AND NM."ID" <= ?
+    ),
+    POR_POSICION AS (
+      SELECT TRIM(POS_NUE) AS POSICION, ID_MOV, TRIM(POS_NUE) AS TERMINO_EN,
+             CODIGO, REMANENTE, PRESION, DISENO, MEDIDA, MARCA
+      FROM MOV WHERE POS_NUE IS NOT NULL AND TRIM(POS_NUE) <> ''
+      UNION ALL
+      SELECT TRIM(POS_ANT) AS POSICION, ID_MOV, TRIM(POS_NUE) AS TERMINO_EN,
+             CODIGO, REMANENTE, PRESION, DISENO, MEDIDA, MARCA
+      FROM MOV WHERE POS_ANT IS NOT NULL AND TRIM(POS_ANT) <> ''
+    ),
+    ULTIMO AS (
+      SELECT P.*, ROW_NUMBER() OVER (PARTITION BY P.POSICION ORDER BY P.ID_MOV DESC) AS RN
+      FROM POR_POSICION P
+    )
+    SELECT POSICION, CODIGO, MARCA, MEDIDA, DISENO, REMANENTE, PRESION
+    FROM ULTIMO
+    WHERE RN = 1
+      AND TERMINO_EN IS NOT NULL
+      AND TERMINO_EN = POSICION
+    ORDER BY POSICION
+  `;
+
+  try {
+    const filas = await db.query(sql, [placaLimpia, ancla]);
+    return (filas ?? []).map((f) => ({
+      posicion: String(f.POSICION ?? '').trim(),
+      codigo: String(f.CODIGO ?? '').trim(),
+      marca: f.MARCA ?? null,
+      medida: f.MEDIDA ?? null,
+      diseno: f.DISENO ?? null,
+      remanente: f.REMANENTE ?? null,
+      presion: f.PRESION ?? null,
+    }));
+  } catch (err) {
+    // Si la reconstruccion falla, el reporte sale igual con los entrantes de
+    // la S60. Perder el juego completo es malo; perder el reporte es peor.
+    console.warn(
+      `[colaS60Service] No se pudo reconstruir el montaje de ${placaLimpia} hasta el movimiento ${ancla}:`,
+      err.message
+    );
+    return [];
+  }
+}
+
+/**
+ * Un reporte concreto, con el juego completo que quedo montado.
+ *
+ * Es aparte de `listarReportesCambioPorPlaca` a proposito: la reconstruccion
+ * cuesta una consulta por S60 y la lista no la necesita. Se calcula solo
+ * para la que el usuario manda a imprimir.
+ */
+async function obtenerReporteCambio(placa, almacen, comprobante) {
+  const reportes = await listarReportesCambioPorPlaca(placa);
+  const buscado = reportes.find(
+    (r) => r.almacen === String(almacen).trim() && r.comprobante === Number(comprobante)
+  );
+  if (!buscado) return null;
+
+  // El ancla es el movimiento mas alto de esta S60. Se prefiere el de
+  // entrada —el montaje— porque el juego completo se mira DESPUES del
+  // cambio; si falta ese enlace, sirve el de salida.
+  const ancla = buscado.lineas.reduce((mayor, l) => {
+    const id = Number(l.idMovimientoEntrada ?? l.idMovimientoSalida ?? 0);
+    return Number.isFinite(id) && id > mayor ? id : mayor;
+  }, 0);
+
+  buscado.montados = await obtenerMontadosAlMomento(buscado.placa, ancla);
+  return buscado;
+}
+
 module.exports = {
   obtenerPendientes,
   esUsuarioExento,
@@ -789,6 +1057,8 @@ module.exports = {
   verificarPlacaHabilitada,
   listarRegularizadasPorPlaca,
   listarReportesCambioPorPlaca,
+  obtenerReporteCambio,
+  obtenerMontadosAlMomento,
   buscarLineaPorPar,
   buscarIdUltimoMovimiento,
   registrarRegularizacion,

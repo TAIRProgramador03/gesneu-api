@@ -87,4 +87,35 @@ router.get('/placa/:placa', colaS60Controller.verificarPlaca);
  */
 router.get('/reportes/:placa', colaS60Controller.listarReportesCambio);
 
+/**
+ * @swagger
+ * /api/cola-s60/reportes/{placa}/{almacen}/{comprobante}:
+ *   get:
+ *     summary: Un reporte concreto, con el juego completo montado tras el cambio
+ *     description: >
+ *       Igual que el listado, pero solo esa S60 y con `montados`: la
+ *       reconstruccion de como quedo el vehiculo justo despues del cambio
+ *       (los que entraron mas los que nadie toco). Se pide al imprimir.
+ *     tags: [Cola S60]
+ *     parameters:
+ *       - in: path
+ *         name: placa
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: almacen
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: comprobante
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: "{ reporte }"
+ *       404:
+ *         description: No existe esa S60 regularizada
+ */
+router.get('/reportes/:placa/:almacen/:comprobante', colaS60Controller.obtenerReporteCambio);
+
 module.exports = router;
