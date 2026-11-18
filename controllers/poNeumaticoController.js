@@ -836,6 +836,9 @@ const getActividadReciente = async (req, res) => {
 const getVehiculosPorNeumaticos = async (req, res) => {
     if (!req.session.user || !req.session.user.usuario) return res.status(401).json({ mensaje: 'No autenticado' });
     const usuario = req.session.user.usuario;
+    // Filtro opcional por taller (descripción). Vacío o 'todos' = todos los talleres del usuario.
+    const taller = typeof req.query.taller === 'string' ? req.query.taller.trim() : '';
+    const filtraTaller = taller !== '' && taller !== 'todos';
     try {
         const query = `
         SELECT
@@ -856,13 +859,16 @@ const getVehiculosPorNeumaticos = async (req, res) => {
             ON POS."ID" = USU.IDOPERACION
         LEFT JOIN ${BD_SCHEMA}.PO_SUPERVISORES PSUP
             ON PSUP.CODPLA = POS.IDSUP
+        LEFT JOIN ${BD_SCHEMA}.PO_TALLER PTALL
+            ON PTALL.ID = POS.IDTLR
         LEFT JOIN ${BD_SCHEMA}.NEU_INFORMACION NI
             ON NI.PLACA_ACTUAL = VE.NUMPLA
         WHERE TRIM(USU.CH_CODI_USUARIO) = ?
+        ${filtraTaller ? 'AND TRIM(PTALL.DESCRIPCION) = ?' : ''}
         GROUP BY VE.NUMPLA, PMO.DESCRIPCION, PM.DESCRIPCION
         ORDER BY CANTIDAD_NEUMATICOS_INSTALADOS ASC
         `;
-        const result = await db.query(query, [usuario]);
+        const result = await db.query(query, filtraTaller ? [usuario, taller] : [usuario]);
         res.json(result);
     } catch (error) {
         console.error('\n❌ Error:', error.message);
